@@ -2,13 +2,13 @@
 
 client_id = "72d1db31ff4a8c7b6e398c0aa0892f31"
 name = "CartLock"
-handle = "cartlock"
-application_url = "https://cartlock.example.com"
+handle = "cartlock-1"
+application_url = "https://cartlock-harisalfarees-6035s-projects.vercel.app"
 embedded = true
 
 [build]
 automatically_update_urls_on_dev = true
-dev_store_url = "atelier-aura-dev.myshopify.com"
+dev_store_url = "rankpilot-xk8wrvgu.myshopify.com"
 include_config_on_deploy = true
 
 [access_scopes]
@@ -17,9 +17,9 @@ scopes = "read_products,read_discounts,write_discounts,read_orders"
 
 [auth]
 redirect_urls = [
-  "https://cartlock.example.com/auth/callback",
-  "https://cartlock.example.com/auth/shopify/callback",
-  "https://cartlock.example.com/api/auth/callback"
+  "https://cartlock-harisalfarees-6035s-projects.vercel.app/auth/callback",
+  "https://cartlock-harisalfarees-6035s-projects.vercel.app/auth/shopify/callback",
+  "https://cartlock-harisalfarees-6035s-projects.vercel.app/api/auth/callback"
 ]
 
 [webhooks]
@@ -39,7 +39,7 @@ api_version = "2025-01"
   shop_deletion_url = "/webhooks"
 
 [app_proxy]
-url = "https://cartlock.example.com/api/storefront/lock"
+url = "https://cartlock-harisalfarees-6035s-projects.vercel.app/api/storefront/lock"
 subpath = "cartlock"
 prefix = "apps"
 

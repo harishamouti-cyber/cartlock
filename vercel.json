@@ -5,11 +5,23 @@
   "env": {
     "DATABASE_URL": "file:/tmp/cartlock.sqlite",
     "SHOPIFY_API_KEY": "72d1db31ff4a8c7b6e398c0aa0892f31",
+    "SHOPIFY_APP_URL": "https://cartlock-harisalfarees-6035s-projects.vercel.app",
     "SCOPES": "read_products,read_discounts,write_discounts,read_orders",
     "SHOPIFY_CARTLOCK_FUNCTION_ID": "01J9CARTLOCKDISCOUNTFN0001",
     "SHOPIFY_PARTNER_ORG_ID": "236581545",
     "SHOPIFY_APP_ID": "436586250241",
     "SHOPIFY_CONTACT_EMAIL": "harishamouti@gmail.com",
     "SHOPIFY_PUBSUB_SERVICE_ACCOUNT": "delivery@shopify-pubsub-webhooks.iam.gserviceaccount.com"
-  }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors https://*.myshopify.com https://admin.shopify.com;"
+        }
+      ]
+    }
+  ]
 }

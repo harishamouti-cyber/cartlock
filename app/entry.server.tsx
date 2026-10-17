@@ -14,7 +14,17 @@ export default async function handleRequest(
   responseHeaders: Headers,
   remixContext: EntryContext,
 ) {
-  addDocumentResponseHeaders(request, responseHeaders);
+  try {
+    addDocumentResponseHeaders(request, responseHeaders);
+  } catch {
+    // Fallback CSP header if shop query parameter is omitted on client route transitions
+  }
+  if (!responseHeaders.has("Content-Security-Policy")) {
+    responseHeaders.set(
+      "Content-Security-Policy",
+      "frame-ancestors https://*.myshopify.com https://admin.shopify.com;",
+    );
+  }
   const userAgent = request.headers.get("user-agent");
   const callbackName = isbot(userAgent ?? "") ? "onAllReady" : "onShellReady";
 
