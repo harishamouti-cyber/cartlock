@@ -30,6 +30,13 @@ import {
 } from "../services/cartlock-crypto";
 import { syncAutomaticAppDiscount } from "../services/cartlock-discount.server";
 import { fetchStoreCatalogProducts } from "../services/catalog.server";
+import {
+  ChronoPulseEmblem,
+  HmacSignatureGlyph,
+  LiveRadarDot,
+  MarginShieldEmblem,
+  VaultLockEmblem,
+} from "../components/StudioIcons";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, admin } = await authenticateAdminOrFallback(request);
@@ -238,6 +245,9 @@ export default function OfferStudioAndCustomizerRoute() {
   const [previewView, setPreviewView] =
     useState<PreviewViewMode>("EXIT_MODAL");
   const [deviceBezel, setDeviceBezel] = useState<DeviceBezelMode>("DESKTOP");
+  const [surfaceTheme, setSurfaceTheme] = useState<
+    "OBSIDIAN" | "ALABASTER" | "ESPRESSO"
+  >("OBSIDIAN");
   const [selectedProductIdx, setSelectedProductIdx] = useState(0);
   const [previewRemainingSecs, setPreviewRemainingSecs] = useState(
     settings.lockDurationMinutes * 60,
@@ -249,6 +259,7 @@ export default function OfferStudioAndCustomizerRoute() {
   const [generatedPermalink, setGeneratedPermalink] = useState<string | null>(
     null,
   );
+  const [copiedPermalink, setCopiedPermalink] = useState(false);
   const [stretchUpsellAdded, setStretchUpsellAdded] = useState(false);
 
   // Sync countdown timer when lockDurationMinutes changes
@@ -1177,27 +1188,57 @@ export default function OfferStudioAndCustomizerRoute() {
               ))}
             </div>
 
-            {/* Catalog Product Switcher Pill Bar */}
-            <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2">
-              <span className="text-[11px] font-semibold text-slate-600">
-                Catalog Item:
-              </span>
-              <select
-                aria-label="Select catalog product to preview"
-                value={selectedProductIdx}
-                onChange={(e) => {
-                  setSelectedProductIdx(Number(e.target.value));
-                  setGeneratedPermalink(null);
-                }}
-                className="min-h-[28px] max-w-[240px] truncate rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900"
-              >
-                {catalogProducts.map((item, idx) => (
-                  <option key={item.id} value={idx}>
-                    {item.title} (${item.primaryVariant.price.toFixed(2)}
-                    {item.isOnSale ? " - Clearance Sale" : ""})
-                  </option>
-                ))}
-              </select>
+            {/* Catalog Product & Surface Theme Switcher Bar */}
+            <div className="mt-3 space-y-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Catalog Item:
+                </span>
+                <select
+                  aria-label="Select catalog product to preview"
+                  value={selectedProductIdx}
+                  onChange={(e) => {
+                    setSelectedProductIdx(Number(e.target.value));
+                    setGeneratedPermalink(null);
+                  }}
+                  className="min-h-[28px] max-w-[235px] truncate rounded-lg border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-900"
+                >
+                  {catalogProducts.map((item, idx) => (
+                    <option key={item.id} value={idx}>
+                      {item.title} (${item.primaryVariant.price.toFixed(2)}
+                      {item.isOnSale ? " - Clearance Sale" : ""})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 border-t border-slate-200/60 pt-2">
+                <span className="text-[11px] font-semibold text-slate-600">
+                  Surface Finish:
+                </span>
+                <div className="flex items-center gap-1">
+                  {(
+                    [
+                      { id: "OBSIDIAN", label: "Obsidian Dark" },
+                      { id: "ESPRESSO", label: "Warm Bronze" },
+                      { id: "ALABASTER", label: "Alabaster Frosted" },
+                    ] as const
+                  ).map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setSurfaceTheme(preset.id)}
+                      className={`rounded-md px-2 py-0.5 text-[10px] font-semibold transition ${
+                        surfaceTheme === preset.id
+                          ? "bg-slate-900 text-white shadow-2xs"
+                          : "bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80"
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
             {/* Spring-Animated Device Bezel Viewport */}
@@ -1207,9 +1248,13 @@ export default function OfferStudioAndCustomizerRoute() {
                   transition:
                     "max-width 420ms cubic-bezier(0.22, 1, 0.36, 1), padding 420ms cubic-bezier(0.22, 1, 0.36, 1)",
                 }}
-                className={`relative w-full overflow-hidden rounded-[24px] border-4 border-slate-900 bg-gradient-to-b from-slate-900 via-[#0B111E] to-[#090D16] shadow-vault ${
-                  deviceBezel === "MOBILE" ? "max-w-[332px]" : "max-w-full"
-                }`}
+                className={`relative w-full overflow-hidden rounded-[24px] border-4 border-slate-900 shadow-vault ${
+                  surfaceTheme === "ESPRESSO"
+                    ? "bg-gradient-to-b from-[#1C1613] via-[#140F0D] to-[#0C0908]"
+                    : surfaceTheme === "ALABASTER"
+                      ? "bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950"
+                      : "bg-gradient-to-b from-slate-900 via-[#0B111E] to-[#090D16]"
+                } ${deviceBezel === "MOBILE" ? "max-w-[332px]" : "max-w-full"}`}
               >
                 {/* Simulated Storefront Browser Bar */}
                 <div className="flex items-center justify-between border-b border-white/10 bg-slate-950/80 px-3.5 py-2 text-[11px] text-slate-400">
@@ -1285,7 +1330,15 @@ export default function OfferStudioAndCustomizerRoute() {
                     </div>
                   ) : (
                     /* EXIT MODAL VIEW or STRETCH GOAL UPSELL VIEW */
-                    <div className="rounded-2xl border border-white/15 bg-gradient-to-b from-[#131C31]/95 to-[#090D16]/95 p-4 text-white shadow-2xl backdrop-blur-xl">
+                    <div
+                      className={`rounded-2xl border p-4 shadow-2xl backdrop-blur-xl ${
+                        surfaceTheme === "ESPRESSO"
+                          ? "border-amber-200/15 bg-gradient-to-b from-[#261E1A]/95 to-[#120E0C]/95 text-white"
+                          : surfaceTheme === "ALABASTER"
+                            ? "border-white/25 bg-gradient-to-b from-slate-900/95 to-slate-950/95 text-white ring-1 ring-white/10"
+                            : "border-white/15 bg-gradient-to-b from-[#131C31]/95 to-[#090D16]/95 text-white"
+                      }`}
+                    >
                       {/* Top Status Pill & Countdown Clock */}
                       <div className="flex items-center justify-between gap-2">
                         <span
@@ -1306,8 +1359,9 @@ export default function OfferStudioAndCustomizerRoute() {
                           <span>{formatClock(previewRemainingSecs)}</span>
                         </span>
 
-                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
-                          {storeDisplayName} Price Lock
+                        <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
+                          <VaultLockEmblem className="h-3 w-3 text-emerald-400" />
+                          <span>{storeDisplayName} Price Lock</span>
                         </span>
                       </div>
 
@@ -1455,11 +1509,26 @@ export default function OfferStudioAndCustomizerRoute() {
                           </div>
                           {generatedPermalink && (
                             <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/60 p-2 text-[10px] text-emerald-200">
-                              <div className="flex items-center gap-1 font-bold text-emerald-300">
-                                <Check className="h-3 w-3" strokeWidth={2} />
-                                <span>
-                                  1-Click Restoration Permalink Dispatched:
+                              <div className="flex items-center justify-between gap-1 font-bold text-emerald-300">
+                                <span className="inline-flex items-center gap-1">
+                                  <Check className="h-3 w-3" strokeWidth={2} />
+                                  <span>
+                                    1-Click Restoration Permalink Dispatched:
+                                  </span>
                                 </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (typeof navigator !== "undefined" && navigator.clipboard) {
+                                      navigator.clipboard.writeText(generatedPermalink);
+                                      setCopiedPermalink(true);
+                                      setTimeout(() => setCopiedPermalink(false), 1800);
+                                    }
+                                  }}
+                                  className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9.5px] font-semibold text-emerald-200 hover:bg-emerald-500/30"
+                                >
+                                  {copiedPermalink ? "Copied!" : "Copy URL"}
+                                </button>
                               </div>
                               <code className="mt-1 block break-all font-mono text-[9.5px] text-slate-300">
                                 {generatedPermalink}

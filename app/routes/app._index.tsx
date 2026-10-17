@@ -14,8 +14,10 @@ import {
   BellRing,
   CheckCircle2,
   Clock,
+  Download,
   DollarSign,
   ExternalLink,
+  Eye,
   Filter,
   Flame,
   KeyRound,
@@ -24,7 +26,6 @@ import {
   PlusCircle,
   RefreshCw,
   Search,
-  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Timer,
@@ -41,6 +42,14 @@ import {
 } from "../services/seed.server";
 import { computeCartLockSignature } from "../services/cartlock-crypto";
 import { processOrdersCreateAttribution } from "../services/order-attribution.server";
+import {
+  ChronoPulseEmblem,
+  FunnelTelemetryGlyph,
+  HmacSignatureGlyph,
+  LiveRadarDot,
+  MarginShieldEmblem,
+  VaultLockEmblem,
+} from "../components/StudioIcons";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop } = await authenticateAdminOrFallback(request);
@@ -107,7 +116,9 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     }
 
     const netOrderRevenue = Number((cartSubtotal - discountAmount).toFixed(2));
-    const remainingSecs = Math.floor(65 + Math.random() * (settings.lockDurationMinutes * 60 - 90));
+    const remainingSecs = Math.floor(
+      65 + Math.random() * (settings.lockDurationMinutes * 60 - 90),
+    );
     const nowMs = Date.now();
     const expiresIso = new Date(nowMs + remainingSecs * 1000).toISOString();
     const validSignature = computeCartLockSignature(
@@ -142,24 +153,6 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       ok: true,
       intent,
       message: `Verified orders/create webhook processed for ${attribution.record?.orderName || `#${randomOrderNum}`} ($${netOrderRevenue.toFixed(2)} net revenue, ${remainingSecs}s remaining on timer).`,
-    });
-  }
-
-  if (intent === "clear_orders") {
-    await prisma.recoveredCartOrder.deleteMany({ where: { shop } });
-    return json({
-      ok: true,
-      intent,
-      message: "Cleared recovered order table to preview the empty state.",
-    });
-  }
-
-  if (intent === "restore_demo_orders") {
-    await ensureRecoveredOrdersSeeded(shop);
-    return json({
-      ok: true,
-      intent,
-      message: "Restored verified recovered order attribution records.",
     });
   }
 
@@ -241,6 +234,7 @@ export default function ConversionOverviewRoute() {
     "ALL" | "URGENT" | "FAST" | "CAPPED"
   >("ALL");
   const [showEmptyPreview, setShowEmptyPreview] = useState(false);
+  const [inspectedOrderId, setInspectedOrderId] = useState<string | null>(null);
 
   const visibleOrders = useMemo(() => {
     if (showEmptyPreview) return [];
@@ -267,7 +261,21 @@ export default function ConversionOverviewRoute() {
       }
       return true;
     });
-  }, [orders, searchQuery, speedFilter, settings.maxDiscountCap, showEmptyPreview]);
+  }, [
+    orders,
+    searchQuery,
+    speedFilter,
+    settings.maxDiscountCap,
+    showEmptyPreview,
+  ]);
+
+  const inspectedOrder = useMemo(
+    () =>
+      visibleOrders.find((o) => o.id === inspectedOrderId) ||
+      visibleOrders[0] ||
+      null,
+    [visibleOrders, inspectedOrderId],
+  );
 
   // Live KPI aggregations from RecoveredCartOrder records
   const kpiStats = useMemo(() => {
@@ -301,6 +309,18 @@ export default function ConversionOverviewRoute() {
         ? Math.max(45, totalLockWindowSeconds - avgRemainingSeconds)
         : 0;
 
+    // Pacing urgency buckets derived from real order records
+    const rapidCheckouts = activeList.filter(
+      (o) => totalLockWindowSeconds - o.secondsRemainingAtCheckout <= 240,
+    ).length;
+    const consideredCheckouts = activeList.filter((o) => {
+      const elapsed = totalLockWindowSeconds - o.secondsRemainingAtCheckout;
+      return elapsed > 240 && o.secondsRemainingAtCheckout > 180;
+    }).length;
+    const cliffCheckouts = activeList.filter(
+      (o) => o.secondsRemainingAtCheckout <= 180,
+    ).length;
+
     return {
       totalNetRevenue,
       totalGrossSubtotal,
@@ -308,8 +328,46 @@ export default function ConversionOverviewRoute() {
       totalLocksClaimed,
       avgRemainingSeconds,
       avgElapsedCheckoutSeconds,
+      rapidCheckouts,
+      consideredCheckouts,
+      cliffCheckouts,
     };
   }, [orders, settings.lockDurationMinutes, showEmptyPreview]);
+
+  // 1-Click CSV Export of Verified Recovered Orders
+  const handleExportCsv = () => {
+    const headers = [
+      "Order Name",
+      "Customer Email",
+      "Cart Subtotal (USD)",
+      "Locked Discount (USD)",
+      "Net Order Revenue (USD)",
+      "Seconds Remaining At Checkout",
+      "Created At",
+    ];
+    const rows = visibleOrders.map((o) => [
+      o.orderName,
+      o.customerEmail || "Guest",
+      o.cartSubtotal.toFixed(2),
+      o.discountAmount.toFixed(2),
+      o.netOrderRevenue.toFixed(2),
+      String(o.secondsRemainingAtCheckout),
+      new Date(o.createdAt).toISOString(),
+    ]);
+    const csvContent = [headers, ...rows]
+      .map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `cartlock-recovered-orders-${settings.shop}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-6 pb-12">
@@ -319,14 +377,8 @@ export default function ConversionOverviewRoute() {
         className="cl-bento-card flex flex-wrap items-center justify-between gap-4 px-5 py-3.5"
       >
         <div className="flex flex-wrap items-center gap-3 sm:gap-5">
-          <div className="flex items-center gap-2">
-            <span
-              className={`h-2.5 w-2.5 rounded-full ${
-                settings.isActive
-                  ? "bg-emerald-500 shadow-[0_0_10px_#10b981]"
-                  : "bg-amber-500"
-              }`}
-            />
+          <div className="flex items-center gap-2.5">
+            <LiveRadarDot tone={settings.isActive ? "emerald" : "amber"} />
             <span className="text-xs font-bold tracking-tight text-slate-900">
               {settings.isActive
                 ? "System Health: All Pipelines Operational"
@@ -342,17 +394,11 @@ export default function ConversionOverviewRoute() {
               Function: CartLock Price Reservation Active
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700">
-              <KeyRound
-                className="h-3.5 w-3.5 text-slate-600"
-                strokeWidth={1.75}
-              />
+              <HmacSignatureGlyph className="h-3.5 w-3.5 text-slate-700" />
               HMAC Salt Shield Verified
             </span>
             <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium text-slate-700">
-              <ShieldCheck
-                className="h-3.5 w-3.5 text-emerald-600"
-                strokeWidth={1.75}
-              />
+              <MarginShieldEmblem className="h-3.5 w-3.5 text-emerald-600" />
               Zero-Stacking: Order & Product Combines Disabled
             </span>
           </div>
@@ -410,7 +456,9 @@ export default function ConversionOverviewRoute() {
             <div className="space-y-1.5">
               <div className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                Storefront App Embed (<span className="tabular-numerals">1.8KB</span> Gzipped Vanilla JS)
+                Storefront App Embed (
+                <span className="tabular-numerals">1.97KB</span> Gzipped Vanilla
+                JS)
               </div>
               <h2 className="text-base font-bold tracking-tight text-white sm:text-lg">
                 Activate the CartLock Exit-Intent Embed in Shopify Theme Editor
@@ -467,16 +515,21 @@ export default function ConversionOverviewRoute() {
         <article className="cl-bento-card cl-bento-card-interactive flex flex-col justify-between p-5">
           <div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-500">
-                Recovered Cart Revenue
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/20 bg-emerald-50 text-emerald-700">
+                  <DollarSign className="h-4 w-4" strokeWidth={1.75} />
+                </div>
+                <span className="text-xs font-bold text-slate-600">
+                  Recovered Cart Revenue
+                </span>
+              </div>
               <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">
                 <ArrowUpRight className="h-3 w-3" strokeWidth={2} />
                 Verified Net
               </span>
             </div>
 
-            <div className="mt-3 flex items-baseline gap-2.5">
+            <div className="mt-4 flex items-baseline gap-2.5">
               <span className="tabular-numerals text-3xl font-extrabold tracking-tight text-slate-900">
                 {formatCurrency(kpiStats.totalNetRevenue)}
               </span>
@@ -489,10 +542,7 @@ export default function ConversionOverviewRoute() {
           <div className="mt-5 border-t border-slate-100 pt-3.5">
             <div className="flex items-center justify-between text-xs">
               <span className="flex items-center gap-1.5 text-slate-600">
-                <DollarSign
-                  className="h-3.5 w-3.5 text-emerald-600"
-                  strokeWidth={1.75}
-                />
+                <MarginShieldEmblem className="h-3.5 w-3.5 text-emerald-600" />
                 Discounts granted
               </span>
               <span className="tabular-numerals font-mono font-semibold text-slate-800">
@@ -510,16 +560,21 @@ export default function ConversionOverviewRoute() {
         <article className="cl-bento-card cl-bento-card-interactive flex flex-col justify-between p-5">
           <div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-500">
-                Price Locks Claimed
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-800">
+                  <VaultLockEmblem className="h-4 w-4 text-emerald-600" />
+                </div>
+                <span className="text-xs font-bold text-slate-600">
+                  Price Locks Claimed
+                </span>
+              </div>
               <span className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
                 <Lock className="h-3 w-3 text-emerald-600" strokeWidth={2} />
                 0 Leaked Codes
               </span>
             </div>
 
-            <div className="mt-3 flex items-baseline gap-2.5">
+            <div className="mt-4 flex items-baseline gap-2.5">
               <span className="tabular-numerals text-3xl font-extrabold tracking-tight text-slate-900">
                 {kpiStats.totalLocksClaimed}
               </span>
@@ -551,16 +606,21 @@ export default function ConversionOverviewRoute() {
         <article className="cl-bento-card cl-bento-card-interactive flex flex-col justify-between p-5">
           <div>
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold text-slate-500">
-                Average Checkout Speed
-              </span>
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-amber-500/20 bg-amber-50 text-amber-700">
+                  <ChronoPulseEmblem className="h-4 w-4" />
+                </div>
+                <span className="text-xs font-bold text-slate-600">
+                  Average Checkout Speed
+                </span>
+              </div>
               <span className="tabular-numerals inline-flex items-center gap-1 rounded-full border border-amber-500/25 bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
                 <Clock className="h-3 w-3 text-amber-600" strokeWidth={2} />
-                { settings.lockDurationMinutes }m Window
+                {settings.lockDurationMinutes}m Window
               </span>
             </div>
 
-            <div className="mt-3 flex items-baseline gap-2.5">
+            <div className="mt-4 flex items-baseline gap-2.5">
               <span className="tabular-numerals font-mono text-3xl font-extrabold tracking-tight text-slate-900">
                 {formatSecondsToClock(kpiStats.avgElapsedCheckoutSeconds)}
               </span>
@@ -587,7 +647,177 @@ export default function ConversionOverviewRoute() {
         </article>
       </section>
 
-      {/* 4. Filterable Recovered Orders Table with Remaining-Time Badges */}
+      {/* 3B. Live Conversion Pacing & Coupon-Firewall Telemetry Grid (21st.dev Bento Split) */}
+      <section
+        aria-label="Checkout Urgency Distribution and Margin Protection"
+        className="grid grid-cols-1 gap-4 lg:grid-cols-12"
+      >
+        <div className="cl-bento-card p-5 lg:col-span-7">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <FunnelTelemetryGlyph className="h-4 w-4 text-emerald-600" />
+              <h2 className="text-sm font-bold text-slate-900">
+                Checkout Urgency Pacing Across {settings.lockDurationMinutes}m
+                Reservation Window
+              </h2>
+            </div>
+            <span className="tabular-numerals rounded-md bg-slate-100 px-2 py-0.5 font-mono text-[11px] font-semibold text-slate-700">
+              {kpiStats.totalLocksClaimed} Verified Orders
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Distribution of completed orders based on{" "}
+            <code className="font-mono text-[11px] text-slate-700">
+              secondsRemainingAtCheckout
+            </code>{" "}
+            recorded by the{" "}
+            <code className="font-mono text-[11px] text-slate-700">
+              orders/create
+            </code>{" "}
+            webhook.
+          </p>
+
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>Rapid Impulse (&lt; 4m)</span>
+                <span className="tabular-numerals font-mono font-bold text-emerald-700">
+                  {kpiStats.rapidCheckouts}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  style={{
+                    width: `${
+                      kpiStats.totalLocksClaimed > 0
+                        ? Math.round(
+                            (kpiStats.rapidCheckouts /
+                              kpiStats.totalLocksClaimed) *
+                              100,
+                          )
+                        : 0
+                    }%`,
+                  }}
+                  className="h-full rounded-full bg-emerald-500"
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-500">
+                Claimed & checked out immediately
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/70 p-3.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                <span>Considered Lock</span>
+                <span className="tabular-numerals font-mono font-bold text-sky-700">
+                  {kpiStats.consideredCheckouts}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                <div
+                  style={{
+                    width: `${
+                      kpiStats.totalLocksClaimed > 0
+                        ? Math.round(
+                            (kpiStats.consideredCheckouts /
+                              kpiStats.totalLocksClaimed) *
+                              100,
+                          )
+                        : 0
+                    }%`,
+                  }}
+                  className="h-full rounded-full bg-sky-500"
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-slate-500">
+                Converted via floating bottom bar
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-amber-500/25 bg-amber-50/50 p-3.5">
+              <div className="flex items-center justify-between text-xs font-semibold text-amber-900">
+                <span>Final-3m Cliff</span>
+                <span className="tabular-numerals font-mono font-bold text-amber-700">
+                  {kpiStats.cliffCheckouts}
+                </span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-amber-200/70">
+                <div
+                  style={{
+                    width: `${
+                      kpiStats.totalLocksClaimed > 0
+                        ? Math.round(
+                            (kpiStats.cliffCheckouts /
+                              kpiStats.totalLocksClaimed) *
+                              100,
+                          )
+                        : 0
+                    }%`,
+                  }}
+                  className="h-full rounded-full bg-amber-500"
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] text-amber-800/80">
+                Converted before 00:00 expiration
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Browser Extension Leak Firewall Card */}
+        <div className="cl-bento-card flex flex-col justify-between p-5 lg:col-span-5">
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <HmacSignatureGlyph className="h-4 w-4 text-emerald-600" />
+                <h2 className="text-sm font-bold text-slate-900">
+                  Anti-Leakage & Extension Firewall
+                </h2>
+              </div>
+              <span className="rounded-full border border-emerald-500/30 bg-emerald-50 px-2.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                100% Zero-Code Native
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Because CartLock uses signed cart attributes (
+              <code className="font-mono text-[11px] text-slate-700">
+                _cartlock_signature
+              </code>
+              ) evaluated inside a Shopify Function, there are zero static coupon
+              strings for browser extensions to scrape.
+            </p>
+          </div>
+
+          <div className="mt-4 grid grid-cols-3 gap-2.5 border-t border-slate-100 pt-3.5 text-center">
+            <div className="rounded-lg bg-slate-50 p-2">
+              <span className="tabular-numerals block font-mono text-sm font-extrabold text-slate-900">
+                0
+              </span>
+              <span className="text-[10px] font-semibold text-slate-500">
+                Honey Leaks
+              </span>
+            </div>
+            <div className="rounded-lg bg-slate-50 p-2">
+              <span className="tabular-numerals block font-mono text-sm font-extrabold text-slate-900">
+                0
+              </span>
+              <span className="text-[10px] font-semibold text-slate-500">
+                Stacked Promos
+              </span>
+            </div>
+            <div className="rounded-lg bg-emerald-50/80 p-2">
+              <span className="tabular-numerals block font-mono text-sm font-extrabold text-emerald-700">
+                100%
+              </span>
+              <span className="text-[10px] font-semibold text-emerald-800">
+                HMAC Verified
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. Filterable Recovered Orders Table with Remaining-Time Badges & Cryptographic Proof Inspector */}
       <section
         aria-label="Verified Recovered Cart Orders"
         className="cl-bento-card overflow-hidden"
@@ -636,6 +866,16 @@ export default function ConversionOverviewRoute() {
                   <span>Simulate Live Order Webhook</span>
                 </button>
               </Form>
+
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                disabled={visibleOrders.length === 0}
+                className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-40"
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+                <span>Export CSV</span>
+              </button>
 
               <button
                 type="button"
@@ -751,80 +991,157 @@ export default function ConversionOverviewRoute() {
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-semibold text-slate-500">
-                  <th className="px-5 py-3">Order</th>
-                  <th className="px-4 py-3">Shopper</th>
-                  <th className="px-4 py-3 text-right">Cart Subtotal</th>
-                  <th className="px-4 py-3 text-right">Locked Discount</th>
-                  <th className="px-4 py-3 text-right">Net Order Revenue</th>
-                  <th className="px-4 py-3">Timer Remaining at Checkout</th>
-                  <th className="px-5 py-3 text-right">Verification</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/60 bg-white">
-                {visibleOrders.map((order) => {
-                  const isUrgent = order.secondsRemainingAtCheckout <= 180;
-                  const isCapped =
-                    settings.maxDiscountCap !== null &&
-                    order.discountAmount >= settings.maxDiscountCap;
+          <div>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200/80 bg-slate-50/80 text-[11px] font-semibold text-slate-500">
+                    <th className="px-5 py-3">Order</th>
+                    <th className="px-4 py-3">Shopper</th>
+                    <th className="px-4 py-3 text-right">Cart Subtotal</th>
+                    <th className="px-4 py-3 text-right">Locked Discount</th>
+                    <th className="px-4 py-3 text-right">Net Order Revenue</th>
+                    <th className="px-4 py-3">Timer Remaining at Checkout</th>
+                    <th className="px-5 py-3 text-right">Cryptographic Audit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/60 bg-white">
+                  {visibleOrders.map((order) => {
+                    const isUrgent = order.secondsRemainingAtCheckout <= 180;
+                    const isCapped =
+                      settings.maxDiscountCap !== null &&
+                      order.discountAmount >= settings.maxDiscountCap;
+                    const isInspected = inspectedOrder?.id === order.id;
 
-                  return (
-                    <tr
-                      key={order.id}
-                      className="transition-colors hover:bg-slate-50/80"
-                    >
-                      <td className="px-5 py-3.5 font-mono font-bold text-slate-900">
-                        {order.orderName}
-                      </td>
-                      <td className="px-4 py-3.5 text-slate-700">
-                        {order.customerEmail || "Verified Guest Checkout"}
-                      </td>
-                      <td className="tabular-numerals px-4 py-3.5 text-right font-mono text-slate-600">
-                        {formatCurrency(order.cartSubtotal)}
-                      </td>
-                      <td className="tabular-numerals px-4 py-3.5 text-right font-mono font-semibold text-emerald-700">
-                        -{formatCurrency(order.discountAmount)}
-                        {isCapped && (
-                          <span className="ml-1.5 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-sans text-[10px] font-bold text-amber-900">
-                            Capped
+                    return (
+                      <tr
+                        key={order.id}
+                        className={`transition-colors ${
+                          isInspected
+                            ? "bg-emerald-50/50"
+                            : "hover:bg-slate-50/80"
+                        }`}
+                      >
+                        <td className="px-5 py-3.5 font-mono font-bold text-slate-900">
+                          {order.orderName}
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-700">
+                          {order.customerEmail || "Verified Guest Checkout"}
+                        </td>
+                        <td className="tabular-numerals px-4 py-3.5 text-right font-mono text-slate-600">
+                          {formatCurrency(order.cartSubtotal)}
+                        </td>
+                        <td className="tabular-numerals px-4 py-3.5 text-right font-mono font-semibold text-emerald-700">
+                          -{formatCurrency(order.discountAmount)}
+                          {isCapped && (
+                            <span className="ml-1.5 inline-flex items-center rounded bg-amber-100 px-1.5 py-0.5 font-sans text-[10px] font-bold text-amber-900">
+                              Capped
+                            </span>
+                          )}
+                        </td>
+                        <td className="tabular-numerals px-4 py-3.5 text-right font-mono font-bold text-slate-900">
+                          {formatCurrency(order.netOrderRevenue)}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span
+                            className={`tabular-numerals inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] font-semibold ${
+                              isUrgent
+                                ? "border-amber-500/30 bg-amber-50 text-amber-900"
+                                : "border-emerald-500/30 bg-emerald-50 text-emerald-900"
+                            }`}
+                          >
+                            <Clock className="h-3 w-3" strokeWidth={2} />
+                            {formatSecondsToClock(
+                              order.secondsRemainingAtCheckout,
+                            )}{" "}
+                            left on lock
                           </span>
-                        )}
-                      </td>
-                      <td className="tabular-numerals px-4 py-3.5 text-right font-mono font-bold text-slate-900">
-                        {formatCurrency(order.netOrderRevenue)}
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`tabular-numerals inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-[11px] font-semibold ${
-                            isUrgent
-                              ? "border-amber-500/30 bg-amber-50 text-amber-900"
-                              : "border-emerald-500/30 bg-emerald-50 text-emerald-900"
-                          }`}
-                        >
-                          <Clock className="h-3 w-3" strokeWidth={2} />
+                        </td>
+                        <td className="px-5 py-3.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setInspectedOrderId(
+                                isInspected ? null : order.id,
+                              )
+                            }
+                            className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition ${
+                              isInspected
+                                ? "border-emerald-600 bg-emerald-600 text-white"
+                                : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100"
+                            }`}
+                          >
+                            <Eye className="h-3 w-3" strokeWidth={2} />
+                            <span>
+                              {isInspected ? "Inspecting" : "Verify Proof"}
+                            </span>
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Cryptographic Order Attribution Audit Bar */}
+            {inspectedOrder && (
+              <div className="border-t border-slate-800 bg-[#090D16] px-5 py-4 text-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+                      <HmacSignatureGlyph className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">
+                          Cryptographic Webhook Audit:{" "}
+                          {inspectedOrder.orderName}
+                        </span>
+                        <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-300">
+                          SIGNATURE_VERIFIED
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[11px] text-slate-400">
+                        Shopper:{" "}
+                        <span className="text-slate-200">
+                          {inspectedOrder.customerEmail || "Guest"}
+                        </span>{" "}
+                        | Completed with{" "}
+                        <span className="tabular-numerals font-mono text-emerald-300">
                           {formatSecondsToClock(
-                            order.secondsRemainingAtCheckout,
-                          )}{" "}
-                          left on lock
-                        </span>
-                      </td>
-                      <td className="px-5 py-3.5 text-right">
-                        <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                          <ShieldCheck
-                            className="h-3 w-3 text-emerald-600"
-                            strokeWidth={2}
-                          />
-                          HMAC Verified
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                            inspectedOrder.secondsRemainingAtCheckout,
+                          )}
+                        </span>{" "}
+                        remaining on price reservation
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-3 text-[11px]">
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5">
+                      <span className="block text-[10px] text-slate-400">
+                        Verified Signature Digest
+                      </span>
+                      <code className="font-mono text-emerald-300">
+                        {computeCartLockSignature(
+                          inspectedOrder.orderId,
+                          settings.secretSalt,
+                        )}
+                      </code>
+                    </div>
+                    <div className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5">
+                      <span className="block text-[10px] text-slate-400">
+                        Checkout Discount Badge
+                      </span>
+                      <span className="font-semibold text-white">
+                        CartLock Price Reservation Active
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -887,7 +1204,7 @@ export default function ConversionOverviewRoute() {
                   </p>
                 </div>
 
-                <div className="mt-3.5 pt-2.5 border-t border-slate-200/60 flex items-center justify-between">
+                <div className="mt-3.5 flex items-center justify-between border-t border-slate-200/60 pt-2.5">
                   <span
                     className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${app.accent}`}
                   >

@@ -31,6 +31,11 @@ import {
   evaluateCartLockFunction,
   type FunctionRunInput,
 } from "../services/cartlock-crypto";
+import {
+  ChronoPulseEmblem,
+  HmacSignatureGlyph,
+  MarginShieldEmblem,
+} from "../components/StudioIcons";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { shop, admin } = await authenticateAdminOrFallback(request);
@@ -733,8 +738,9 @@ export default function ExpirationAndPacingSimulatorRoute() {
             </pre>
 
             <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-[11px] text-slate-400">
-              <span>
-                Signature Check:{" "}
+              <span className="inline-flex items-center gap-1.5">
+                <HmacSignatureGlyph className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Signature Check:</span>
                 <strong
                   className={
                     evaluation.signatureValid
@@ -749,6 +755,91 @@ export default function ExpirationAndPacingSimulatorRoute() {
                 {functionInput.cart.signature?.value}
               </code>
             </div>
+          </section>
+
+          {/* Margin Shield vs. Static Coupon Leak ROI Comparison Card */}
+          <section className="cl-bento-card p-5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-500/25 bg-emerald-50 text-emerald-700">
+                  <MarginShieldEmblem className="h-4 w-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Margin Shield vs. Leaked Static Coupon (100 Checkouts)
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Compares this exact cart under CartLock Function rules vs. a
+                    static <code className="font-mono">WELCOME10</code> promo
+                    code scraped by browser extensions.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {(() => {
+              const staticCouponLossPerOrder = Number(
+                (
+                  (evaluation.cartSubtotal * settings.discountValue) /
+                  100
+                ).toFixed(2),
+              );
+              const cartLockGiveawayPerOrder = evaluation.finalDiscountDollars;
+              const marginSavedPerOrder = Math.max(
+                0,
+                Number(
+                  (
+                    staticCouponLossPerOrder - cartLockGiveawayPerOrder
+                  ).toFixed(2),
+                ),
+              );
+              const marginSavedPer100Orders = Number(
+                (marginSavedPerOrder * 100).toFixed(2),
+              );
+
+              return (
+                <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+                  <div className="rounded-xl border border-rose-200/80 bg-rose-50/50 p-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-rose-700">
+                      Static Coupon Leak
+                    </span>
+                    <p className="tabular-numerals mt-1 font-mono text-base font-extrabold text-rose-900">
+                      -${staticCouponLossPerOrder.toFixed(2)} / order
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-rose-700">
+                      Discounts clearance items, uncapped, never expires
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200/90 bg-slate-50/80 p-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+                      CartLock Function
+                    </span>
+                    <p className="tabular-numerals mt-1 font-mono text-base font-extrabold text-slate-900">
+                      -${cartLockGiveawayPerOrder.toFixed(2)} / order
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-slate-500">
+                      Sale-shielded, capped at $
+                      {(settings.maxDiscountCap || 25).toFixed(2)}, expires at{" "}
+                      {settings.lockDurationMinutes}m
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-emerald-500/30 bg-emerald-50/70 p-3">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800">
+                      Protected Profit (100 Orders)
+                    </span>
+                    <p className="tabular-numerals mt-1 font-mono text-base font-extrabold text-emerald-800">
+                      +${marginSavedPer100Orders.toFixed(2)}
+                    </p>
+                    <p className="mt-0.5 text-[10px] text-emerald-700">
+                      +${marginSavedPerOrder.toFixed(2)} net margin saved per
+                      checkout
+                    </p>
+                  </div>
+                </div>
+              );
+            })()}
           </section>
         </div>
       </div>
