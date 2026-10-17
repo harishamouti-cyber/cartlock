@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+}
+
+model CartLockSettings {
+  id                      String   @id @default(cuid())
+  shop                    String   @unique
+  storeDisplayName        String   @default("Atelier Aura")
+  isActive                Boolean  @default(true)
+  discountType            String   @default("PERCENTAGE") // PERCENTAGE | FIXED_AMOUNT
+  discountValue           Float    @default(10.0)
+  maxDiscountCap          Float?   @default(25.00)
+  excludeSaleItems        Boolean  @default(true)
+  minCartSubtotal         Float    @default(50.00)
+  enableStretchGoalUpsell Boolean  @default(true)
+  upsellVariantId         String?  @default("gid://shopify/ProductVariant/44901283901")
+  lockDurationMinutes     Int      @default(15)
+  cooldownHours           Int      @default(72)
+  enableDesktopExitIntent Boolean  @default(true)
+  enableMobileIdleTrigger Boolean  @default(true)
+  modalHeadline           String   @default("Reserve Your Cart at {discount} Off")
+  modalBodyText           String   @default("Your cart of {cart_total} is reserved with a live price lock for {timer}. Checkout before the clock expires to claim your automatic savings.")
+  buttonText              String   @default("Claim {discount} Price Lock")
+  accentColor             String   @default("#10b981")
+  secretSalt              String
+  automaticDiscountId     String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model RecoveredCartOrder {
+  id                         String   @id @default(cuid())
+  shop                       String
+  orderId                    String   @unique
+  orderName                  String
+  customerEmail              String?
+  cartSubtotal               Float
+  discountAmount             Float
+  netOrderRevenue            Float
+  secondsRemainingAtCheckout Int
+  createdAt                  DateTime @default(now())
+
+  @@index([shop, createdAt])
+}

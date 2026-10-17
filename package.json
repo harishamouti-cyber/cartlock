@@ -1,0 +1,46 @@
+{
+  "name": "cartlock-exit-intent-price-lock",
+  "private": true,
+  "version": "1.0.0",
+  "description": "CartLock: Exit-Intent Price Lock — Built-for-Shopify application with Cryptographic Cart Reservation, Margin Shield Discount Function, and Theme App Embed",
+  "type": "module",
+  "scripts": {
+    "build": "remix vite:build",
+    "dev": "shopify app dev",
+    "dev:web": "remix vite:dev --port 3000",
+    "start": "remix-serve ./build/server/index.js",
+    "setup": "prisma generate && prisma db push",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "@remix-run/node": "2.17.5",
+    "@remix-run/react": "2.17.5",
+    "@remix-run/serve": "2.17.5",
+    "@shopify/app-bridge-react": "4.2.13",
+    "@shopify/polaris": "13.9.5",
+    "@shopify/polaris-icons": "9.3.1",
+    "@shopify/shopify-app-remix": "4.2.1",
+    "@shopify/shopify-app-session-storage-prisma": "8.0.1",
+    "isbot": "5.2.2",
+    "lucide-react": "0.468.0",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@remix-run/dev": "2.17.5",
+    "@types/node": "22.20.5",
+    "@types/react": "18.3.31",
+    "@types/react-dom": "18.3.7",
+    "autoprefixer": "10.4.21",
+    "postcss": "8.4.31",
+    "prisma": "5.22.0",
+    "tailwindcss": "3.4.17",
+    "typescript": "5.9.3",
+    "vite": "6.4.4",
+    "vite-tsconfig-paths": "5.1.4"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

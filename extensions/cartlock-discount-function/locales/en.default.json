@@ -1,0 +1,4 @@
+{
+  "name": "CartLock: Exit-Intent Price Reservation",
+  "description": "Applies cryptographically verified, time-bound exit-intent price reservations with Margin Shield protection."
+}

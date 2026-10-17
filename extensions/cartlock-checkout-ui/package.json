@@ -1,0 +1,11 @@
+{
+  "name": "cartlock-checkout-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Synchronized Checkout UI Extension banner reading _cartlock_expires_at and displaying locked dollar savings above the order summary.",
+  "dependencies": {
+    "@shopify/ui-extensions": "2025.1.0",
+    "@shopify/ui-extensions-react": "2025.1.0",
+    "react": "^18.2.0"
+  }
+}

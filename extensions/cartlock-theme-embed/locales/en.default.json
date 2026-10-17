@@ -1,0 +1,7 @@
+{
+  "name": "CartLock Price Reservation Embed",
+  "settings": {
+    "enable_embed": "Enable CartLock Exit-Intent Price Reservation",
+    "checkout_redirect": "Route directly to /checkout on claim (uncheck to keep browsing with sticky bar)"
+  }
+}

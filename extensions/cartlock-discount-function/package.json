@@ -1,0 +1,10 @@
+{
+  "name": "cartlock-discount-function",
+  "version": "1.0.0",
+  "private": true,
+  "description": "CartLock Native Shopify Discount Function with Cryptographic Verification & Margin Shield",
+  "scripts": {
+    "build": "shopify app function build",
+    "preview": "shopify app function run"
+  }
+}

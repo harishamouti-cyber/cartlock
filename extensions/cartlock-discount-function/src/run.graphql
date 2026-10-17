@@ -1,0 +1,44 @@
+query RunInput {
+  cart {
+    cost {
+      subtotalAmount {
+        amount
+      }
+    }
+    expiresAt: attribute(key: "_cartlock_expires_at") {
+      value
+    }
+    signature: attribute(key: "_cartlock_signature") {
+      value
+    }
+    lines {
+      id
+      quantity
+      cost {
+        amountPerQuantity {
+          amount
+        }
+        compareAtAmountPerQuantity {
+          amount
+        }
+      }
+      merchandise {
+        __typename
+        ... on ProductVariant {
+          id
+          title
+        }
+      }
+    }
+  }
+  shop {
+    localTime {
+      dateTime
+    }
+  }
+  discountNode {
+    metafield(namespace: "$app:cartlock", key: "function-configuration") {
+      value
+    }
+  }
+}

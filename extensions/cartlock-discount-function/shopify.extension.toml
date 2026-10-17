@@ -1,0 +1,20 @@
+api_version = "2025-01"
+
+[[extensions]]
+name = "t:name"
+handle = "cartlock-discount-function"
+type = "function"
+description = "CartLock Cryptographic Exit-Intent Price Reservation & Margin Shield Discount Function"
+
+  [[extensions.targeting]]
+  target = "purchase.product-discount.run"
+  input_query = "src/run.graphql"
+  export = "run"
+
+  [extensions.build]
+  command = ""
+  path = "dist/function.wasm"
+
+  [extensions.ui.paths]
+  create = "/app/settings"
+  details = "/app/settings"

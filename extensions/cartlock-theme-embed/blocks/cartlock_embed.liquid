@@ -1,0 +1,53 @@
+{% comment %}
+  CartLock: Exit-Intent Price Lock: Ultra-Lightweight Theme App Embed Block
+  Renders configuration attributes for cartlock.js (<2KB gzipped vanilla JS) and scoped cartlock.css.
+{% endcomment %}
+
+{% assign cl_config = app.metafields.cartlock.storefront_config.value %}
+
+<link rel="stylesheet" href="{{ 'cartlock.css' | asset_url }}" media="print" onload="this.media='all'">
+<noscript><link rel="stylesheet" href="{{ 'cartlock.css' | asset_url }}"></noscript>
+
+<div
+  id="cartlock-app-embed-root"
+  data-shop="{{ shop.permanent_domain }}"
+  data-store-name="{{ cl_config.storeDisplayName | default: shop.name | escape }}"
+  data-active="{{ cl_config.isActive | default: true }}"
+  data-discount-type="{{ cl_config.discountType | default: 'PERCENTAGE' }}"
+  data-discount-value="{{ cl_config.discountValue | default: 10 }}"
+  data-max-cap="{{ cl_config.maxDiscountCap | default: 25 }}"
+  data-exclude-sale="{{ cl_config.excludeSaleItems | default: true }}"
+  data-min-subtotal="{{ cl_config.minCartSubtotal | default: 50 }}"
+  data-enable-upsell="{{ cl_config.enableStretchGoalUpsell | default: true }}"
+  data-upsell-variant-id="{{ cl_config.upsellVariantId | default: '' }}"
+  data-upsell-title="{{ cl_config.upsellTitle | default: 'Signature Travel Atomizer' | escape }}"
+  data-upsell-price="{{ cl_config.upsellPrice | default: '18.00' }}"
+  data-lock-minutes="{{ cl_config.lockDurationMinutes | default: 15 }}"
+  data-cooldown-hours="{{ cl_config.cooldownHours | default: 72 }}"
+  data-desktop-exit="{{ cl_config.enableDesktopExitIntent | default: true }}"
+  data-mobile-idle="{{ cl_config.enableMobileIdleTrigger | default: true }}"
+  data-headline="{{ cl_config.modalHeadline | default: 'Reserve Your Cart at {discount} Off' | escape }}"
+  data-body="{{ cl_config.modalBodyText | default: 'Your cart of {cart_total} is reserved with a live price lock for {timer}. Complete checkout before your reservation expires.' | escape }}"
+  data-button="{{ cl_config.buttonText | default: 'Claim {discount} Price Lock' | escape }}"
+  data-accent="{{ cl_config.accentColor | default: '#10b981' }}"
+  data-direct-checkout="{{ block.settings.direct_checkout | default: false }}"
+  data-proxy-url="/apps/cartlock"
+  aria-live="polite"
+></div>
+
+<script src="{{ 'cartlock.js' | asset_url }}" defer></script>
+
+{% schema %}
+{
+  "name": "CartLock Price Lock",
+  "target": "body",
+  "settings": [
+    {
+      "type": "checkbox",
+      "id": "direct_checkout",
+      "label": "Redirect directly to /checkout when price lock is claimed",
+      "default": false
+    }
+  ]
+}
+{% endschema %}

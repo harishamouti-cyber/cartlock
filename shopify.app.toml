@@ -1,0 +1,47 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "cartlock-exit-intent-price-lock-client-id"
+name = "CartLock: Exit-Intent Price Lock"
+handle = "cartlock-exit-intent-price-lock"
+application_url = "https://cartlock.example.com"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+dev_store_url = "atelier-aura-dev.myshopify.com"
+include_config_on_deploy = true
+
+[access_scopes]
+# Scopes for Discount Function sync, Catalog media queries, and Order attribution webhooks
+scopes = "read_products,read_discounts,write_discounts,read_orders"
+
+[auth]
+redirect_urls = [
+  "https://cartlock.example.com/auth/callback",
+  "https://cartlock.example.com/auth/shopify/callback",
+  "https://cartlock.example.com/api/auth/callback"
+]
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = [ "app/uninstalled" ]
+  uri = "/webhooks"
+
+  [[webhooks.subscriptions]]
+  topics = [ "orders/create" ]
+  uri = "/webhooks/orders/create"
+
+  [webhooks.privacy_compliance]
+  customer_deletion_url = "/webhooks"
+  customer_data_request_url = "/webhooks"
+  shop_deletion_url = "/webhooks"
+
+[app_proxy]
+url = "https://cartlock.example.com/api/storefront/lock"
+subpath = "cartlock"
+prefix = "apps"
+
+[pos]
+embedded = false
