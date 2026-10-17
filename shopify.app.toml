@@ -1,8 +1,8 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "cartlock-exit-intent-price-lock-client-id"
-name = "CartLock: Exit-Intent Price Lock"
-handle = "cartlock-exit-intent-price-lock"
+client_id = "72d1db31ff4a8c7b6e398c0aa0892f31"
+name = "CartLock"
+handle = "cartlock"
 application_url = "https://cartlock.example.com"
 embedded = true
 

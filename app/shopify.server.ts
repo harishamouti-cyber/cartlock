@@ -10,7 +10,7 @@ import prisma from "./db.server";
 export const DEFAULT_DEV_SHOP = "atelier-aura-dev.myshopify.com";
 
 const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY || "cartlock_dev_api_key",
+  apiKey: process.env.SHOPIFY_API_KEY || "72d1db31ff4a8c7b6e398c0aa0892f31",
   apiSecretKey:
     process.env.SHOPIFY_API_SECRET ||
     "cartlock_dev_api_secret_9f8e7d6c5b4a3f2e1d0c",
