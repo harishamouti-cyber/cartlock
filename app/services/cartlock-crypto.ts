@@ -1,3 +1,127 @@
+export interface PriceLockTier {
+  tier: 1 | 2 | 3;
+  threshold: number;
+  discountValue: number;
+  label: string;
+}
+
+export const DEFAULT_PRICE_LOCK_TIERS: PriceLockTier[] = [
+  { tier: 1, threshold: 50, discountValue: 10, label: "Tier 1 Lock" },
+  { tier: 2, threshold: 100, discountValue: 15, label: "Tier 2 Boost" },
+  { tier: 3, threshold: 150, discountValue: 20, label: "Tier 3 Max" },
+];
+
+export function parsePriceLockTiers(
+  raw?: string | PriceLockTier[] | null,
+): PriceLockTier[] {
+  if (Array.isArray(raw) && raw.length >= 2) {
+    return [...raw]
+      .map((t, idx) => ({
+        tier: ((idx + 1) as 1 | 2 | 3) || 1,
+        threshold: Math.max(1, Number(t.threshold) || (idx + 1) * 50),
+        discountValue: Math.max(1, Number(t.discountValue) || (idx + 2) * 5),
+        label: String(t.label || `Tier ${idx + 1}`).trim(),
+      }))
+      .sort((a, b) => a.threshold - b.threshold)
+      .slice(0, 3)
+      .map((t, idx) => ({ ...t, tier: (idx + 1) as 1 | 2 | 3 }));
+  }
+
+  if (typeof raw === "string" && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length >= 2) {
+        return parsePriceLockTiers(parsed);
+      }
+    } catch {
+      // Fallback to default tiers
+    }
+  }
+
+  return DEFAULT_PRICE_LOCK_TIERS;
+}
+
+export interface TierEscalationResolution {
+  tiers: PriceLockTier[];
+  minEntryThreshold: number;
+  activeTier: PriceLockTier | null;
+  nextTier: PriceLockTier | null;
+  amountToNextTier: number;
+  effectiveDiscountValue: number;
+  overallProgressPct: number;
+}
+
+export function resolveTieredEscalation(
+  cartSubtotal: number,
+  enableTieredLadder: boolean,
+  tiersInput: PriceLockTier[] | string | null | undefined,
+  fallbackMinSubtotal: number,
+  fallbackDiscountValue: number,
+): TierEscalationResolution {
+  const tiers = parsePriceLockTiers(tiersInput);
+  if (!enableTieredLadder || tiers.length === 0) {
+    const unlocked = cartSubtotal >= fallbackMinSubtotal;
+    const shortfall = Math.max(
+      0,
+      Number((fallbackMinSubtotal - cartSubtotal).toFixed(2)),
+    );
+    const singleTier: PriceLockTier = {
+      tier: 1,
+      threshold: fallbackMinSubtotal,
+      discountValue: fallbackDiscountValue,
+      label: "Tier 1 Lock",
+    };
+    return {
+      tiers: [singleTier],
+      minEntryThreshold: fallbackMinSubtotal,
+      activeTier: unlocked ? singleTier : null,
+      nextTier: unlocked ? null : singleTier,
+      amountToNextTier: shortfall,
+      effectiveDiscountValue: unlocked ? fallbackDiscountValue : 0,
+      overallProgressPct:
+        fallbackMinSubtotal > 0
+          ? Math.min(100, Math.round((cartSubtotal / fallbackMinSubtotal) * 100))
+          : 100,
+    };
+  }
+
+  const sorted = [...tiers].sort((a, b) => a.threshold - b.threshold);
+  const minEntryThreshold = sorted[0].threshold;
+  const maxThreshold = sorted[sorted.length - 1].threshold;
+
+  let activeTier: PriceLockTier | null = null;
+  let nextTier: PriceLockTier | null = null;
+
+  for (const tier of sorted) {
+    if (cartSubtotal >= tier.threshold) {
+      activeTier = tier;
+    } else if (!nextTier) {
+      nextTier = tier;
+    }
+  }
+
+  const amountToNextTier = nextTier
+    ? Math.max(0, Number((nextTier.threshold - cartSubtotal).toFixed(2)))
+    : 0;
+
+  const overallProgressPct =
+    maxThreshold > 0
+      ? Math.min(100, Math.max(4, Math.round((cartSubtotal / maxThreshold) * 100)))
+      : 100;
+
+  return {
+    tiers: sorted,
+    minEntryThreshold,
+    activeTier,
+    nextTier,
+    amountToNextTier,
+    effectiveDiscountValue: activeTier
+      ? activeTier.discountValue
+      : sorted[0].discountValue,
+    overallProgressPct,
+  };
+}
+
 export interface CartLockFunctionConfig {
   isActive?: boolean;
   discountType: "PERCENTAGE" | "FIXED_AMOUNT";
@@ -5,6 +129,8 @@ export interface CartLockFunctionConfig {
   maxDiscountCap: number | null;
   excludeSaleItems: boolean;
   minCartSubtotal: number;
+  enableTieredLadder?: boolean;
+  tiers?: PriceLockTier[];
   lockDurationMinutes: number;
   secretSalt: string;
 }
@@ -105,6 +231,11 @@ export interface FunctionEvaluationDiagnostics {
   finalPayableSubtotal: number;
   wasCappedByMaxCap: boolean;
   stretchGoalShortfall: number;
+  activeTier: PriceLockTier | null;
+  nextTier: PriceLockTier | null;
+  amountToNextTier: number;
+  resolvedTiers: PriceLockTier[];
+  effectiveDiscountValue: number;
   output: ShopifyDiscountOutput;
 }
 
@@ -257,6 +388,8 @@ export function evaluateCartLockFunction(
         : 25,
     excludeSaleItems: parsedMetafield.excludeSaleItems ?? true,
     minCartSubtotal: Number(parsedMetafield.minCartSubtotal ?? 50),
+    enableTieredLadder: parsedMetafield.enableTieredLadder ?? false,
+    tiers: parsePriceLockTiers(parsedMetafield.tiers),
     lockDurationMinutes: Number(parsedMetafield.lockDurationMinutes ?? 15),
     secretSalt: String(parsedMetafield.secretSalt ?? ""),
     ...overrideConfig,
@@ -315,9 +448,21 @@ export function evaluateCartLockFunction(
     }
   }
 
+  // Resolve Dynamic Tiered Price Lock Ladder (or single-threshold fallback)
+  const tierResolution = resolveTieredEscalation(
+    cartSubtotal,
+    Boolean(config.enableTieredLadder),
+    config.tiers,
+    config.minCartSubtotal,
+    config.discountValue,
+  );
+
+  const requiredMinSubtotal = tierResolution.minEntryThreshold;
+  const effectiveDiscountValue = tierResolution.effectiveDiscountValue;
+
   const stretchGoalShortfall = Math.max(
     0,
-    Number((config.minCartSubtotal - cartSubtotal).toFixed(2)),
+    Number((requiredMinSubtotal - cartSubtotal).toFixed(2)),
   );
 
   // 1. Check active flag
@@ -339,6 +484,11 @@ export function evaluateCartLockFunction(
       finalPayableSubtotal: cartSubtotal,
       wasCappedByMaxCap: false,
       stretchGoalShortfall,
+      activeTier: tierResolution.activeTier,
+      nextTier: tierResolution.nextTier,
+      amountToNextTier: tierResolution.amountToNextTier,
+      resolvedTiers: tierResolution.tiers,
+      effectiveDiscountValue: 0,
       output: EMPTY_DISCOUNT,
     };
   }
@@ -363,6 +513,11 @@ export function evaluateCartLockFunction(
       finalPayableSubtotal: cartSubtotal,
       wasCappedByMaxCap: false,
       stretchGoalShortfall,
+      activeTier: tierResolution.activeTier,
+      nextTier: tierResolution.nextTier,
+      amountToNextTier: tierResolution.amountToNextTier,
+      resolvedTiers: tierResolution.tiers,
+      effectiveDiscountValue: 0,
       output: EMPTY_DISCOUNT,
     };
   }
@@ -387,15 +542,20 @@ export function evaluateCartLockFunction(
       finalPayableSubtotal: cartSubtotal,
       wasCappedByMaxCap: false,
       stretchGoalShortfall,
+      activeTier: tierResolution.activeTier,
+      nextTier: tierResolution.nextTier,
+      amountToNextTier: tierResolution.amountToNextTier,
+      resolvedTiers: tierResolution.tiers,
+      effectiveDiscountValue: 0,
       output: EMPTY_DISCOUNT,
     };
   }
 
-  // 4. Minimum Cart Subtotal check
-  if (cartSubtotal < config.minCartSubtotal) {
+  // 4. Minimum Cart Subtotal / Tier 1 Entry Check
+  if (cartSubtotal < requiredMinSubtotal) {
     return {
       status: "REVOKED_BELOW_MIN_SUBTOTAL",
-      statusReason: `Cart subtotal ($${cartSubtotal.toFixed(2)}) is below minimum threshold ($${config.minCartSubtotal.toFixed(2)}). Add $${stretchGoalShortfall.toFixed(2)} more to unlock.`,
+      statusReason: `Cart subtotal ($${cartSubtotal.toFixed(2)}) is below minimum threshold ($${requiredMinSubtotal.toFixed(2)}). Add $${stretchGoalShortfall.toFixed(2)} more to unlock Tier 1 (${tierResolution.tiers[0].discountValue}${config.discountType === "PERCENTAGE" ? "%" : "$"} Off).`,
       signatureValid: true,
       expectedSignature,
       providedSignature,
@@ -410,6 +570,11 @@ export function evaluateCartLockFunction(
       finalPayableSubtotal: cartSubtotal,
       wasCappedByMaxCap: false,
       stretchGoalShortfall,
+      activeTier: null,
+      nextTier: tierResolution.nextTier,
+      amountToNextTier: tierResolution.amountToNextTier,
+      resolvedTiers: tierResolution.tiers,
+      effectiveDiscountValue: 0,
       output: EMPTY_DISCOUNT,
     };
   }
@@ -434,6 +599,11 @@ export function evaluateCartLockFunction(
       finalPayableSubtotal: cartSubtotal,
       wasCappedByMaxCap: false,
       stretchGoalShortfall: 0,
+      activeTier: tierResolution.activeTier,
+      nextTier: tierResolution.nextTier,
+      amountToNextTier: tierResolution.amountToNextTier,
+      resolvedTiers: tierResolution.tiers,
+      effectiveDiscountValue: 0,
       output: EMPTY_DISCOUNT,
     };
   }
@@ -442,13 +612,13 @@ export function evaluateCartLockFunction(
     cartLine: { id },
   }));
 
-  // 6. Compute discount & apply maxDiscountCap
+  // 6. Compute discount using resolved tier & apply maxDiscountCap
   let uncappedDiscountDollars = 0;
   let finalDiscountDollars = 0;
   let wasCappedByMaxCap = false;
 
   if (config.discountType === "PERCENTAGE") {
-    const pct = Math.max(0, Math.min(100, config.discountValue));
+    const pct = Math.max(0, Math.min(100, effectiveDiscountValue));
     uncappedDiscountDollars = Number(
       ((eligibleSubtotal * pct) / 100).toFixed(2),
     );
@@ -466,7 +636,7 @@ export function evaluateCartLockFunction(
     }
   } else {
     uncappedDiscountDollars = Number(
-      Math.min(eligibleSubtotal, Math.max(0, config.discountValue)).toFixed(2),
+      Math.min(eligibleSubtotal, Math.max(0, effectiveDiscountValue)).toFixed(2),
     );
     if (
       config.maxDiscountCap &&
@@ -486,7 +656,7 @@ export function evaluateCartLockFunction(
     config.discountType === "PERCENTAGE" && !wasCappedByMaxCap
       ? {
           percentage: {
-            value: config.discountValue.toFixed(1),
+            value: effectiveDiscountValue.toFixed(1),
           },
         }
       : {
@@ -507,11 +677,16 @@ export function evaluateCartLockFunction(
     ],
   };
 
+  const tierPrefix =
+    config.enableTieredLadder && tierResolution.activeTier
+      ? `[Tier ${tierResolution.activeTier.tier}: ${tierResolution.activeTier.label}] `
+      : "";
+
   return {
     status: wasCappedByMaxCap ? "GRANTED_CAPPED" : "GRANTED",
     statusReason: wasCappedByMaxCap
-      ? `Price reservation verified (${secondsRemaining}s remaining). Margin Shield capped ${config.discountValue}% discount from $${uncappedDiscountDollars.toFixed(2)} to $${finalDiscountDollars.toFixed(2)} maximum cap.`
-      : `Price reservation verified (${secondsRemaining}s remaining). Applied ${config.discountType === "PERCENTAGE" ? `${config.discountValue}%` : `$${config.discountValue.toFixed(2)}`} automatic discount ($${finalDiscountDollars.toFixed(2)} saved).`,
+      ? `${tierPrefix}Price reservation verified (${secondsRemaining}s remaining). Margin Shield capped ${effectiveDiscountValue}% discount from $${uncappedDiscountDollars.toFixed(2)} to $${finalDiscountDollars.toFixed(2)} maximum cap.`
+      : `${tierPrefix}Price reservation verified (${secondsRemaining}s remaining). Applied ${config.discountType === "PERCENTAGE" ? `${effectiveDiscountValue}%` : `$${effectiveDiscountValue.toFixed(2)}`} automatic discount ($${finalDiscountDollars.toFixed(2)} saved).`,
     signatureValid: true,
     expectedSignature,
     providedSignature,
@@ -528,6 +703,11 @@ export function evaluateCartLockFunction(
     ),
     wasCappedByMaxCap,
     stretchGoalShortfall: 0,
+    activeTier: tierResolution.activeTier,
+    nextTier: tierResolution.nextTier,
+    amountToNextTier: tierResolution.amountToNextTier,
+    resolvedTiers: tierResolution.tiers,
+    effectiveDiscountValue,
     output,
   };
 }

@@ -29,6 +29,7 @@ import { fetchStoreCatalogProducts } from "../services/catalog.server";
 import {
   computeCartLockSignature,
   evaluateCartLockFunction,
+  parsePriceLockTiers,
   type FunctionRunInput,
 } from "../services/cartlock-crypto";
 import {
@@ -189,6 +190,12 @@ export default function ExpirationAndPacingSimulatorRoute() {
             maxDiscountCap: settings.maxDiscountCap,
             excludeSaleItems: settings.excludeSaleItems,
             minCartSubtotal: settings.minCartSubtotal,
+            enableTieredLadder:
+              (settings as { enableTieredLadder?: boolean }).enableTieredLadder ??
+              true,
+            tiers: parsePriceLockTiers(
+              (settings as { tieredLadderConfig?: string }).tieredLadderConfig,
+            ),
             lockDurationMinutes: settings.lockDurationMinutes,
             secretSalt: settings.secretSalt,
           }),
@@ -537,10 +544,60 @@ export default function ExpirationAndPacingSimulatorRoute() {
               <div className="tabular-numerals flex justify-between font-mono text-[11px] text-slate-500">
                 <span>$15.00</span>
                 <span className="font-semibold text-amber-700">
-                  Min Subtotal: ${settings.minCartSubtotal.toFixed(2)}
+                  Min Entry: ${evaluation.resolvedTiers[0]?.threshold.toFixed(2) || settings.minCartSubtotal.toFixed(2)}
                 </span>
                 <span>$500.00</span>
               </div>
+
+              {/* Interactive Multi-Tier AOV Escalator Checkpoints */}
+              {evaluation.resolvedTiers.length > 1 && (
+                <div className="mt-3 rounded-xl border border-emerald-500/25 bg-emerald-50/40 p-3">
+                  <div className="flex items-center justify-between text-[11px] font-semibold">
+                    <span className="text-slate-800">
+                      Multi-Tier AOV Escalator Checkpoints:
+                    </span>
+                    <span className="tabular-numerals font-mono text-emerald-800">
+                      {evaluation.activeTier
+                        ? `Active: Tier ${evaluation.activeTier.tier} (${evaluation.effectiveDiscountValue}% Off)`
+                        : `Add $${evaluation.stretchGoalShortfall.toFixed(2)} for Tier 1`}
+                    </span>
+                  </div>
+
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {evaluation.resolvedTiers.map((tierStep) => {
+                      const unlocked =
+                        evaluation.cartSubtotal >= tierStep.threshold;
+                      const isCurrent =
+                        evaluation.activeTier?.tier === tierStep.tier;
+                      return (
+                        <button
+                          key={tierStep.tier}
+                          type="button"
+                          onClick={() =>
+                            setSimulatedCartSubtotal(tierStep.threshold + 12)
+                          }
+                          className={`flex flex-col items-center rounded-lg border px-2.5 py-2 text-center transition ${
+                            isCurrent
+                              ? "border-emerald-600 bg-emerald-600 text-white shadow-xs"
+                              : unlocked
+                                ? "border-emerald-500/40 bg-emerald-100/70 text-emerald-950"
+                                : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                          }`}
+                        >
+                          <span className="font-mono text-[10px] font-bold">
+                            Tier {tierStep.tier}: ${tierStep.threshold}+
+                          </span>
+                          <span className="tabular-numerals text-xs font-extrabold">
+                            Lock {tierStep.discountValue}
+                            {settings.discountType === "PERCENTAGE" ? "%" : "$"}{" "}
+                            Off
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Additional Checkboxes: Mixed Cart Clearance Test & Anti-Inspect-Element Tamper */}

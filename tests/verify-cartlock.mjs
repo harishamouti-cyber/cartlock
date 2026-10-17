@@ -79,14 +79,19 @@ async function runVerification() {
   assert(settingsHtml.includes("Stretch Goal Upsell View"));
   assert(settingsHtml.includes("Sticky Bar View"));
   assert(
+    settingsHtml.includes(
+      "Dynamic Tiered Price Lock Ladder (Multi-Tier AOV Escalator)",
+    ),
+  );
+  assert(
     !settingsHtml.includes("—"),
     "R-02 Gate: No em-dash characters allowed in rendered /app/settings HTML",
   );
   console.log(
-    "   -> /app/settings passed all studio, variable chip, and preview bezel checks.",
+    "   -> /app/settings passed all studio, variable chip, multi-tier ladder, and preview bezel checks.",
   );
 
-  // 5. Verify POST /app/settings (Save & Sync Discount Function)
+  // 5. Verify POST /app/settings (Save & Sync Discount Function with Multi-Tier Ladder)
   console.log("5. Verifying POST /app/settings (Save & Sync Discount Function)...");
   const saveForm = new URLSearchParams({
     intent: "save_settings",
@@ -97,6 +102,12 @@ async function runVerification() {
     maxDiscountCap: "25",
     excludeSaleItems: "true",
     minCartSubtotal: "50",
+    enableTieredLadder: "true",
+    tieredLadderConfig: JSON.stringify([
+      { tier: 1, threshold: 50, discountValue: 10, label: "Tier 1 Lock" },
+      { tier: 2, threshold: 100, discountValue: 15, label: "Tier 2 Boost" },
+      { tier: 3, threshold: 150, discountValue: 20, label: "Tier 3 Max" },
+    ]),
     enableStretchGoalUpsell: "true",
     upsellVariantId: "gid://shopify/ProductVariant/44901283901",
     lockDurationMinutes: "15",
@@ -120,6 +131,9 @@ async function runVerification() {
   assert.equal(saveJson.syncResult.synced, true);
   assert.equal(saveJson.syncResult.combinesWith.orderDiscounts, false);
   assert.equal(saveJson.syncResult.combinesWith.productDiscounts, false);
+  assert(
+    saveJson.syncResult.metafieldPayload.includes('"enableTieredLadder":true'),
+  );
   console.log("   -> Synced Automatic App Discount:", saveJson.message);
 
   // 6. Verify GET /app/simulator (Expiration & Pacing Simulator)
@@ -132,12 +146,15 @@ async function runVerification() {
       simHtml.includes("Expiration & Pacing Simulator"),
   );
   assert(simHtml.includes("Simulated Time Elapsed (0 to 30 Minutes)"));
+  assert(simHtml.includes("Multi-Tier AOV Escalator Checkpoints"));
   assert(simHtml.includes("CartLock Price Reservation Active"));
   assert(
     !simHtml.includes("—"),
     "R-02 Gate: No em-dash characters allowed in rendered /app/simulator HTML",
   );
-  console.log("   -> /app/simulator passed all sandbox & R-02 checks.");
+  console.log(
+    "   -> /app/simulator passed all sandbox, multi-tier escalator, & R-02 checks.",
+  );
 
   // 7. Verify Storefront App Proxy signing & Email Permalink (/api/storefront/lock)
   console.log("7. Verifying Storefront App Proxy (/api/storefront/lock)...");

@@ -80,6 +80,13 @@ export interface FunctionRunResult {
   }>;
 }
 
+interface PriceLockTier {
+  tier: number;
+  threshold: number;
+  discountValue: number;
+  label?: string;
+}
+
 interface CartLockMetafieldConfig {
   isActive?: boolean;
   discountType: "PERCENTAGE" | "FIXED_AMOUNT";
@@ -87,6 +94,8 @@ interface CartLockMetafieldConfig {
   maxDiscountCap?: number | null;
   excludeSaleItems: boolean;
   minCartSubtotal: number;
+  enableTieredLadder?: boolean;
+  tiers?: PriceLockTier[];
   lockDurationMinutes: number;
   secretSalt: string;
 }
@@ -193,9 +202,31 @@ export function run(input: RunInput): FunctionRunResult {
     return EMPTY_DISCOUNT;
   }
 
-  // 3. Minimum Cart Subtotal Enforcement
+  // 3. Minimum Cart Subtotal & Dynamic Tiered Price Lock Ladder Resolution
   const cartSubtotal = parseFloat(input.cart?.cost?.subtotalAmount?.amount || "0");
-  if (cartSubtotal < Number(config.minCartSubtotal || 0)) {
+  let activeDiscountValue = Number(config.discountValue || 0);
+  let requiredMinSubtotal = Number(config.minCartSubtotal || 0);
+
+  if (
+    config.enableTieredLadder &&
+    Array.isArray(config.tiers) &&
+    config.tiers.length > 0
+  ) {
+    const sortedTiers = [...config.tiers].sort(
+      (a, b) => Number(a.threshold) - Number(b.threshold),
+    );
+    requiredMinSubtotal = Number(sortedTiers[0].threshold || requiredMinSubtotal);
+    let matchedTier: PriceLockTier | null = null;
+    for (const tier of sortedTiers) {
+      if (cartSubtotal >= Number(tier.threshold)) {
+        matchedTier = tier;
+      }
+    }
+    if (!matchedTier) {
+      return EMPTY_DISCOUNT;
+    }
+    activeDiscountValue = Number(matchedTier.discountValue || activeDiscountValue);
+  } else if (cartSubtotal < requiredMinSubtotal) {
     return EMPTY_DISCOUNT;
   }
 
@@ -231,7 +262,7 @@ export function run(input: RunInput): FunctionRunResult {
       : 0;
 
   if (config.discountType === "PERCENTAGE") {
-    const pct = Math.max(0, Math.min(100, Number(config.discountValue || 0)));
+    const pct = Math.max(0, Math.min(100, activeDiscountValue));
     const uncappedDollars = (eligibleSubtotal * pct) / 100;
 
     if (maxCap > 0 && uncappedDollars > maxCap) {
@@ -272,7 +303,7 @@ export function run(input: RunInput): FunctionRunResult {
   // FIXED_AMOUNT discount
   let fixedDollars = Math.min(
     eligibleSubtotal,
-    Math.max(0, Number(config.discountValue || 0)),
+    Math.max(0, activeDiscountValue),
   );
   if (maxCap > 0 && fixedDollars > maxCap) {
     fixedDollars = Math.min(eligibleSubtotal, maxCap);

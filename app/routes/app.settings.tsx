@@ -26,7 +26,10 @@ import { authenticateAdminOrFallback } from "../shopify.server";
 import { ensureShopSettings } from "../services/seed.server";
 import {
   computeCartLockSignature,
+  parsePriceLockTiers,
+  resolveTieredEscalation,
   sanitizeStoreDisplayName,
+  type PriceLockTier,
 } from "../services/cartlock-crypto";
 import { syncAutomaticAppDiscount } from "../services/cartlock-discount.server";
 import { fetchStoreCatalogProducts } from "../services/catalog.server";
@@ -100,6 +103,16 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     0,
     parseFloat(String(formData.get("minCartSubtotal") || "50")),
   );
+  const enableTieredLadder =
+    formData.get("enableTieredLadder") !== null
+      ? formData.get("enableTieredLadder") === "true"
+      : true;
+  const rawTieredConfig = String(formData.get("tieredLadderConfig") || "").trim();
+  const validatedTiers = parsePriceLockTiers(
+    rawTieredConfig || existing.tieredLadderConfig,
+  );
+  const tieredLadderConfig = JSON.stringify(validatedTiers);
+
   const enableStretchGoalUpsell =
     formData.get("enableStretchGoalUpsell") === "true";
   const upsellVariantId =
@@ -138,6 +151,8 @@ export const action = async ({ request }: ActionFunctionArgs) => {
       maxDiscountCap,
       excludeSaleItems,
       minCartSubtotal,
+      enableTieredLadder,
+      tieredLadderConfig,
       enableStretchGoalUpsell,
       upsellVariantId,
       lockDurationMinutes,
@@ -206,6 +221,17 @@ export default function OfferStudioAndCustomizerRoute() {
   const [minCartSubtotal, setMinCartSubtotal] = useState(
     settings.minCartSubtotal,
   );
+  const [enableTieredLadder, setEnableTieredLadder] = useState<boolean>(
+    (settings as { enableTieredLadder?: boolean }).enableTieredLadder ?? true,
+  );
+  const [tiers, setTiers] = useState<PriceLockTier[]>(() =>
+    parsePriceLockTiers(
+      (settings as { tieredLadderConfig?: string }).tieredLadderConfig,
+    ),
+  );
+  const [previewSubtotalOverride, setPreviewSubtotalOverride] = useState<
+    number | null
+  >(null);
   const [enableStretchGoalUpsell, setEnableStretchGoalUpsell] = useState(
     settings.enableStretchGoalUpsell,
   );
@@ -326,19 +352,54 @@ export default function OfferStudioAndCustomizerRoute() {
     }
   };
 
-  // Compute live preview numbers
+  const updateTierItem = (
+    idx: number,
+    patch: Partial<Pick<PriceLockTier, "threshold" | "discountValue" | "label">>,
+  ) => {
+    setTiers((prev) => {
+      const next = prev.map((t, i) => (i === idx ? { ...t, ...patch } : t));
+      if (idx === 0 && patch.threshold !== undefined) {
+        setMinCartSubtotal(patch.threshold);
+      }
+      if (idx === 0 && patch.discountValue !== undefined) {
+        setDiscountValue(patch.discountValue);
+      }
+      return next;
+    });
+  };
+
+  // Compute live preview numbers & multi-tier escalation
   const basePreviewCartSubtotal =
-    previewView === "STRETCH_GOAL" && !stretchUpsellAdded
-      ? Math.max(12, Number((minCartSubtotal - 12).toFixed(2)))
-      : activeCatalogItem.primaryVariant.price;
+    previewSubtotalOverride !== null
+      ? previewSubtotalOverride
+      : previewView === "STRETCH_GOAL" && !stretchUpsellAdded
+        ? Math.max(12, Number(((tiers[0]?.threshold || minCartSubtotal) - 12).toFixed(2)))
+        : activeCatalogItem.primaryVariant.price;
+
+  const tierEscalation = resolveTieredEscalation(
+    basePreviewCartSubtotal,
+    enableTieredLadder,
+    tiers,
+    minCartSubtotal,
+    discountValue,
+  );
+
+  const activeEffectiveDiscountVal = enableTieredLadder
+    ? tierEscalation.effectiveDiscountValue
+    : discountValue;
 
   const stretchShortfall = Math.max(
     0,
-    Number((minCartSubtotal - basePreviewCartSubtotal).toFixed(2)),
+    Number((tierEscalation.minEntryThreshold - basePreviewCartSubtotal).toFixed(2)),
   );
   const stretchProgressPct =
-    minCartSubtotal > 0
-      ? Math.min(100, Math.round((basePreviewCartSubtotal / minCartSubtotal) * 100))
+    tierEscalation.minEntryThreshold > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (basePreviewCartSubtotal / tierEscalation.minEntryThreshold) * 100,
+          ),
+        )
       : 100;
 
   const isPreviewItemExcludedByMarginShield =
@@ -347,8 +408,13 @@ export default function OfferStudioAndCustomizerRoute() {
   const rawSavings = isPreviewItemExcludedByMarginShield
     ? 0
     : discountType === "PERCENTAGE"
-      ? Number(((basePreviewCartSubtotal * discountValue) / 100).toFixed(2))
-      : Number(discountValue.toFixed(2));
+      ? Number(
+          (
+            (basePreviewCartSubtotal * activeEffectiveDiscountVal) /
+            100
+          ).toFixed(2),
+        )
+      : Number(activeEffectiveDiscountVal.toFixed(2));
 
   const parsedCap = parseFloat(maxDiscountCap || "0");
   const isPreviewCapped =
@@ -363,8 +429,8 @@ export default function OfferStudioAndCustomizerRoute() {
 
   const discountBadgeText =
     discountType === "PERCENTAGE"
-      ? `${discountValue}%`
-      : `$${discountValue.toFixed(2)}`;
+      ? `${activeEffectiveDiscountVal}%`
+      : `$${activeEffectiveDiscountVal.toFixed(2)}`;
 
   const interpolateCopy = (template: string) => {
     return template
@@ -394,8 +460,9 @@ export default function OfferStudioAndCustomizerRoute() {
             Offer Studio & Live Customizer
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            Configure automatic Discount Function rules, Margin Shield clearance
-            protection, and live storefront micro-interactions.
+            Configure automatic Discount Function rules, Dynamic Tiered Price
+            Lock Ladders, Margin Shield clearance protection, and live
+            storefront micro-interactions.
           </p>
         </div>
 
@@ -440,6 +507,16 @@ export default function OfferStudioAndCustomizerRoute() {
             type="hidden"
             name="excludeSaleItems"
             value={String(excludeSaleItems)}
+          />
+          <input
+            type="hidden"
+            name="enableTieredLadder"
+            value={String(enableTieredLadder)}
+          />
+          <input
+            type="hidden"
+            name="tieredLadderConfig"
+            value={JSON.stringify(tiers)}
           />
           <input
             type="hidden"
@@ -601,6 +678,211 @@ export default function OfferStudioAndCustomizerRoute() {
                     Triggers Stretch Goal below threshold
                   </p>
                 </div>
+              </div>
+
+              {/* Dynamic Tiered Price Lock Ladder (Multi-Tier AOV Escalator) */}
+              <div className="space-y-4 rounded-xl border border-emerald-500/25 bg-gradient-to-b from-emerald-50/40 to-slate-50/70 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Sparkles
+                        className="h-3.5 w-3.5 text-emerald-600"
+                        strokeWidth={2}
+                      />
+                      <span className="text-xs font-bold text-slate-900">
+                        Dynamic Tiered Price Lock Ladder (Multi-Tier AOV
+                        Escalator)
+                      </span>
+                      <span className="rounded-md border border-emerald-500/30 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-800">
+                        3-Stop Checkpoints
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      Configure 3 progressive cart thresholds (e.g., Spend $
+                      {tiers[0]?.threshold || 50} -&gt; Lock{" "}
+                      {tiers[0]?.discountValue || 10}%, Spend $
+                      {tiers[1]?.threshold || 100} -&gt; Lock{" "}
+                      {tiers[1]?.discountValue || 15}%, Spend $
+                      {tiers[2]?.threshold || 150} -&gt; Lock{" "}
+                      {tiers[2]?.discountValue || 20}%) synced directly to the
+                      native Shopify Discount Function.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={enableTieredLadder}
+                    aria-label="Toggle Dynamic Tiered Price Lock Ladder"
+                    onClick={() => setEnableTieredLadder((v) => !v)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                      enableTieredLadder ? "bg-emerald-600" : "bg-slate-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
+                        enableTieredLadder ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {enableTieredLadder && (
+                  <div className="space-y-3 border-t border-emerald-500/15 pt-3">
+                    {/* 1-Click Ladder Presets */}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-[11px] font-semibold text-slate-600">
+                        Quick AOV Ladder Presets:
+                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTiers([
+                              {
+                                tier: 1,
+                                threshold: 50,
+                                discountValue: 10,
+                                label: "Tier 1 Lock",
+                              },
+                              {
+                                tier: 2,
+                                threshold: 100,
+                                discountValue: 15,
+                                label: "Tier 2 Boost",
+                              },
+                              {
+                                tier: 3,
+                                threshold: 150,
+                                discountValue: 20,
+                                label: "Tier 3 Max",
+                              },
+                            ]);
+                            setMinCartSubtotal(50);
+                            setDiscountValue(10);
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow-2xs hover:border-emerald-500/40"
+                        >
+                          Standard ($50-&gt;10% / $100-&gt;15% / $150-&gt;20%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTiers([
+                              {
+                                tier: 1,
+                                threshold: 75,
+                                discountValue: 10,
+                                label: "Atelier Entry",
+                              },
+                              {
+                                tier: 2,
+                                threshold: 150,
+                                discountValue: 15,
+                                label: "Atelier Plus",
+                              },
+                              {
+                                tier: 3,
+                                threshold: 250,
+                                discountValue: 22,
+                                label: "Private Vault",
+                              },
+                            ]);
+                            setMinCartSubtotal(75);
+                            setDiscountValue(10);
+                          }}
+                          className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow-2xs hover:border-emerald-500/40"
+                        >
+                          Luxury High-AOV ($75 / $150 / $250)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 3 Progressive Tier Cards */}
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      {tiers.map((tierObj, idx) => (
+                        <div
+                          key={tierObj.tier}
+                          className="rounded-xl border border-slate-200/90 bg-white p-3 shadow-2xs"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-800 border border-emerald-500/25">
+                              TIER {tierObj.tier}
+                            </span>
+                            <span className="tabular-numerals font-mono text-[11px] font-bold text-slate-700">
+                              Spend ${tierObj.threshold} -&gt;{" "}
+                              {discountType === "PERCENTAGE"
+                                ? `${tierObj.discountValue}%`
+                                : `$${tierObj.discountValue}`}
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5 space-y-2">
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500">
+                                Spend Threshold ($)
+                              </label>
+                              <input
+                                type="number"
+                                min="5"
+                                step="5"
+                                value={tierObj.threshold}
+                                onChange={(e) =>
+                                  updateTierItem(idx, {
+                                    threshold: Math.max(
+                                      1,
+                                      parseFloat(e.target.value || "0"),
+                                    ),
+                                  })
+                                }
+                                className="tabular-numerals mt-0.5 h-8 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 font-mono text-xs font-bold text-slate-900"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500">
+                                Lock Discount (
+                                {discountType === "PERCENTAGE" ? "%" : "$"})
+                              </label>
+                              <input
+                                type="number"
+                                min="1"
+                                max={discountType === "PERCENTAGE" ? "90" : "500"}
+                                step="1"
+                                value={tierObj.discountValue}
+                                onChange={(e) =>
+                                  updateTierItem(idx, {
+                                    discountValue: Math.max(
+                                      1,
+                                      parseFloat(e.target.value || "0"),
+                                    ),
+                                  })
+                                }
+                                className="tabular-numerals mt-0.5 h-8 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 font-mono text-xs font-bold text-emerald-700"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[10px] font-semibold text-slate-500">
+                                Checkpoint Badge Label
+                              </label>
+                              <input
+                                type="text"
+                                value={tierObj.label}
+                                onChange={(e) =>
+                                  updateTierItem(idx, {
+                                    label: e.target.value,
+                                  })
+                                }
+                                className="mt-0.5 h-8 w-full rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 text-[11px] font-semibold text-slate-800"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Margin Shield: Exclude Sale / Clearance Items */}
@@ -1239,6 +1521,43 @@ export default function OfferStudioAndCustomizerRoute() {
                   ))}
                 </div>
               </div>
+
+              {enableTieredLadder && (
+                <div className="flex flex-wrap items-center justify-between gap-1.5 border-t border-slate-200/60 pt-2">
+                  <span className="text-[11px] font-semibold text-slate-600">
+                    Test Ladder Tier:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewSubtotalOverride(null)}
+                      className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold transition ${
+                        previewSubtotalOverride === null
+                          ? "bg-emerald-700 text-white"
+                          : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Item (${activeCatalogItem.primaryVariant.price.toFixed(0)})
+                    </button>
+                    {tiers.map((t) => (
+                      <button
+                        key={t.tier}
+                        type="button"
+                        onClick={() =>
+                          setPreviewSubtotalOverride(t.threshold + 8)
+                        }
+                        className={`rounded-md px-2 py-0.5 font-mono text-[10px] font-semibold transition ${
+                          previewSubtotalOverride === t.threshold + 8
+                            ? "bg-emerald-700 text-white"
+                            : "border border-slate-200 bg-white text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        T{t.tier} (${t.threshold}+)
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Spring-Animated Device Bezel Viewport */}
@@ -1361,7 +1680,11 @@ export default function OfferStudioAndCustomizerRoute() {
 
                         <span className="inline-flex items-center gap-1 rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold text-slate-300">
                           <VaultLockEmblem className="h-3 w-3 text-emerald-400" />
-                          <span>{storeDisplayName} Price Lock</span>
+                          <span>
+                            {enableTieredLadder && tierEscalation.activeTier
+                              ? `${tierEscalation.activeTier.label} (${discountBadgeText})`
+                              : `${storeDisplayName} Price Lock`}
+                          </span>
                         </span>
                       </div>
 
@@ -1375,6 +1698,80 @@ export default function OfferStudioAndCustomizerRoute() {
                         {interpolateCopy(modalBodyText)}
                       </p>
 
+                      {/* Animated Multi-Stop Progress Checkpoints (Dynamic Tiered Price Lock Ladder) */}
+                      {enableTieredLadder && (
+                        <div className="mt-3.5 rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                          <div className="flex items-center justify-between gap-2 text-[11px] font-semibold">
+                            <span className="text-slate-200">
+                              {tierEscalation.nextTier
+                                ? `Add $${tierEscalation.amountToNextTier.toFixed(2)} more to unlock Tier ${tierEscalation.nextTier.tier} (${discountType === "PERCENTAGE" ? `${tierEscalation.nextTier.discountValue}%` : `$${tierEscalation.nextTier.discountValue}`} Off)`
+                                : `Max Tier ${tierEscalation.activeTier?.tier || 3} Unlocked (${discountBadgeText} Off Locked)`}
+                            </span>
+                            <span className="tabular-numerals font-mono text-emerald-300">
+                              ${basePreviewCartSubtotal.toFixed(0)} / $
+                              {tierEscalation.tiers[
+                                tierEscalation.tiers.length - 1
+                              ]?.threshold || 150}
+                            </span>
+                          </div>
+
+                          {/* Multi-Stop Progress Bar */}
+                          <div className="relative mt-2.5 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                            <div
+                              style={{
+                                width: `${tierEscalation.overallProgressPct}%`,
+                                transition:
+                                  "width 520ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                              }}
+                              className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-amber-300"
+                            />
+                          </div>
+
+                          {/* 3 Checkpoint Pills */}
+                          <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                            {tierEscalation.tiers.map((step) => {
+                              const unlocked =
+                                basePreviewCartSubtotal >= step.threshold;
+                              const isCurrentActive =
+                                tierEscalation.activeTier?.tier === step.tier;
+                              return (
+                                <button
+                                  key={step.tier}
+                                  type="button"
+                                  onClick={() =>
+                                    setPreviewSubtotalOverride(
+                                      step.threshold + 8,
+                                    )
+                                  }
+                                  className={`flex flex-col items-center rounded-lg border px-2 py-1.5 text-center transition ${
+                                    isCurrentActive
+                                      ? "border-emerald-400/60 bg-emerald-500/20 text-white shadow-[0_0_12px_rgba(16,185,129,0.25)]"
+                                      : unlocked
+                                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+                                        : "border-white/10 bg-white/[0.02] text-slate-400 hover:border-white/20"
+                                  }`}
+                                >
+                                  <span className="inline-flex items-center gap-1 font-mono text-[9.5px] font-bold">
+                                    {unlocked && (
+                                      <Check
+                                        className="h-2.5 w-2.5 text-emerald-300"
+                                        strokeWidth={2.5}
+                                      />
+                                    )}
+                                    <span>${step.threshold}+</span>
+                                  </span>
+                                  <span className="tabular-numerals text-[10px] font-extrabold text-emerald-300">
+                                    {discountType === "PERCENTAGE"
+                                      ? `${step.discountValue}% Off`
+                                      : `$${step.discountValue} Off`}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Stretch Goal Progress Bar */}
                       {previewView === "STRETCH_GOAL" && (
                         <div className="mt-3.5 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3">
@@ -1382,7 +1779,7 @@ export default function OfferStudioAndCustomizerRoute() {
                             <span className="text-amber-200">
                               {stretchUpsellAdded
                                 ? "Stretch Goal Unlocked! Price Lock Applied"
-                                : `Cart Threshold Progress ($${basePreviewCartSubtotal.toFixed(2)} / $${minCartSubtotal.toFixed(2)})`}
+                                : `Cart Threshold Progress ($${basePreviewCartSubtotal.toFixed(2)} / $${tierEscalation.minEntryThreshold.toFixed(2)})`}
                             </span>
                             <span className="tabular-numerals font-mono text-emerald-300">
                               {stretchUpsellAdded ? "100%" : `${stretchProgressPct}%`}

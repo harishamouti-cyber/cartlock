@@ -85,6 +85,19 @@ export interface DiscountSyncResult {
 export function buildFunctionConfigurationPayload(
   settings: CartLockSettings,
 ): string {
+  const settingsWithTiers = settings as CartLockSettings & {
+    enableTieredLadder?: boolean;
+    tieredLadderConfig?: string;
+  };
+  let parsedTiers: unknown = undefined;
+  if (settingsWithTiers.tieredLadderConfig) {
+    try {
+      parsedTiers = JSON.parse(settingsWithTiers.tieredLadderConfig);
+    } catch {
+      parsedTiers = undefined;
+    }
+  }
+
   return JSON.stringify({
     isActive: settings.isActive,
     discountType: settings.discountType,
@@ -92,6 +105,8 @@ export function buildFunctionConfigurationPayload(
     maxDiscountCap: settings.maxDiscountCap,
     excludeSaleItems: settings.excludeSaleItems,
     minCartSubtotal: settings.minCartSubtotal,
+    enableTieredLadder: settingsWithTiers.enableTieredLadder ?? true,
+    tiers: parsedTiers,
     lockDurationMinutes: settings.lockDurationMinutes,
     secretSalt: settings.secretSalt,
     syncedAt: new Date().toISOString(),

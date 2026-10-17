@@ -35,6 +35,8 @@ model CartLockSettings {
   maxDiscountCap          Float?   @default(25.00)
   excludeSaleItems        Boolean  @default(true)
   minCartSubtotal         Float    @default(50.00)
+  enableTieredLadder      Boolean  @default(true)
+  tieredLadderConfig      String   @default("[{\"tier\":1,\"threshold\":50,\"discountValue\":10,\"label\":\"Tier 1 Lock\"},{\"tier\":2,\"threshold\":100,\"discountValue\":15,\"label\":\"Tier 2 Boost\"},{\"tier\":3,\"threshold\":150,\"discountValue\":20,\"label\":\"Tier 3 Max\"}]")
   enableStretchGoalUpsell Boolean  @default(true)
   upsellVariantId         String?  @default("gid://shopify/ProductVariant/44901283901")
   lockDurationMinutes     Int      @default(15)
