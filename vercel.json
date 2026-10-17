@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npm run build",
+  "env": {
+    "DATABASE_URL": "file:/tmp/cartlock.sqlite",
+    "SHOPIFY_API_KEY": "72d1db31ff4a8c7b6e398c0aa0892f31",
+    "SCOPES": "read_products,read_discounts,write_discounts,read_orders",
+    "SHOPIFY_CARTLOCK_FUNCTION_ID": "01J9CARTLOCKDISCOUNTFN0001",
+    "SHOPIFY_PARTNER_ORG_ID": "236581545",
+    "SHOPIFY_APP_ID": "436586250241",
+    "SHOPIFY_CONTACT_EMAIL": "harishamouti@gmail.com",
+    "SHOPIFY_PUBSUB_SERVICE_ACCOUNT": "delivery@shopify-pubsub-webhooks.iam.gserviceaccount.com"
+  }
+}
