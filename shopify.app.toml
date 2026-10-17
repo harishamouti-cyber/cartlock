@@ -3,7 +3,7 @@
 client_id = "72d1db31ff4a8c7b6e398c0aa0892f31"
 name = "CartLock"
 handle = "cartlock-1"
-application_url = "https://cartlock-harisalfarees-6035s-projects.vercel.app"
+application_url = "https://cartlock-eight.vercel.app"
 embedded = true
 extension_directories = [ "extensions/cartlock-theme-embed" ]
 
@@ -17,9 +17,9 @@ scopes = "read_products,read_discounts,write_discounts"
 
 [auth]
 redirect_urls = [
-  "https://cartlock-harisalfarees-6035s-projects.vercel.app/auth/callback",
-  "https://cartlock-harisalfarees-6035s-projects.vercel.app/auth/shopify/callback",
-  "https://cartlock-harisalfarees-6035s-projects.vercel.app/api/auth/callback"
+  "https://cartlock-eight.vercel.app/auth/callback",
+  "https://cartlock-eight.vercel.app/auth/shopify/callback",
+  "https://cartlock-eight.vercel.app/api/auth/callback"
 ]
 
 [webhooks]
@@ -35,7 +35,7 @@ api_version = "2025-01"
   shop_deletion_url = "/webhooks"
 
 [app_proxy]
-url = "https://cartlock-harisalfarees-6035s-projects.vercel.app/api/storefront/lock"
+url = "https://cartlock-eight.vercel.app/api/storefront/lock"
 subpath = "cartlock"
 prefix = "apps"
 
