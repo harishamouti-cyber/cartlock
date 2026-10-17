@@ -3,5 +3,6 @@ api_version = "2025-01"
 [[extensions]]
 name = "CartLock Storefront Price Lock"
 handle = "cartlock-theme-embed"
+uid = "e5877970-d343-d7c9-03fa-38c8388490de4b8bbc70"
 type = "theme"
 description = "Ultra-lightweight Exit-Intent Price Lock modal, Stretch Goal AOV booster, and floating glassmorphic countdown bar."

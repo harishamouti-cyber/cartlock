@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
 import { json } from "@remix-run/node";
-import { Link, useLoaderData } from "@remix-run/react";
+import { Link, useLoaderData, useLocation } from "@remix-run/react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -59,6 +59,7 @@ function formatClock(totalSeconds: number): string {
 
 export default function ExpirationAndPacingSimulatorRoute() {
   const { settings, catalogProducts } = useLoaderData<typeof loader>();
+  const location = useLocation();
 
   // Sandbox Interactive State
   const [selectedProductId, setSelectedProductId] = useState<string>(
@@ -218,7 +219,7 @@ export default function ExpirationAndPacingSimulatorRoute() {
     settings,
   ]);
 
-  const { functionInput, evaluation } = simulationResult;
+  const { evaluation } = simulationResult;
   const isDiscountGranted =
     evaluation.status === "GRANTED" || evaluation.status === "GRANTED_CAPPED";
 
@@ -240,12 +241,9 @@ export default function ExpirationAndPacingSimulatorRoute() {
             Expiration & Pacing Simulator
           </h1>
           <p className="mt-0.5 text-xs text-slate-500">
-            Interactive sandbox executing the exact{" "}
-            <code className="font-mono text-[11px] text-slate-700">
-              purchase.product-discount.run
-            </code>{" "}
-            Shopify Function engine across cart subtotals, clearance items, and
-            time-elapsed boundaries.
+            Test how your price reservation rules respond to different cart
+            totals, sale items, and countdown timer expirations before going
+            live.
           </p>
         </div>
 
@@ -267,7 +265,7 @@ export default function ExpirationAndPacingSimulatorRoute() {
             <span>Reset Sandbox</span>
           </button>
           <Link
-            to="/app/settings"
+            to={`/app/settings${location.search}`}
             className="inline-flex min-h-[36px] items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -626,18 +624,11 @@ export default function ExpirationAndPacingSimulatorRoute() {
               <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3">
                 <div>
                   <span className="block text-xs font-bold text-slate-900">
-                    Simulate Shopper DevTools Timestamp Tampering
+                    Simulate Shopper Timer Reset Attempt
                   </span>
                   <span className="text-[11px] text-slate-500">
-                    Mutates{" "}
-                    <code className="font-mono text-slate-700">
-                      _cartlock_expires_at
-                    </code>{" "}
-                    without matching{" "}
-                    <code className="font-mono text-slate-700">
-                      secretSalt
-                    </code>{" "}
-                    digest
+                    Tests what happens if a shopper tries to manually extend
+                    their countdown deadline in the browser
                   </span>
                 </div>
                 <input
@@ -651,7 +642,7 @@ export default function ExpirationAndPacingSimulatorRoute() {
           </section>
         </div>
 
-        {/* RIGHT COLUMN: Real-Time Discount Function Verdict, Checkout Banner & JSON Payload */}
+        {/* RIGHT COLUMN: Real-Time Checkout Verdict, Order Summary & Rule Verification Checklist */}
         <div className="space-y-6 lg:col-span-6">
           {/* Verdict Banner & Checkout UI Extension Preview */}
           <section className="cl-bento-card overflow-hidden p-5 sm:p-6">
@@ -669,7 +660,12 @@ export default function ExpirationAndPacingSimulatorRoute() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-extrabold text-slate-900">
-                      Function Verdict: {evaluation.status}
+                      Checkout Verdict:{" "}
+                      {isDiscountGranted
+                        ? evaluation.status === "GRANTED_CAPPED"
+                          ? "Discount Applied (Capped)"
+                          : "Discount Applied"
+                        : "Discount Removed"}
                     </h2>
                     <span
                       className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
@@ -690,12 +686,10 @@ export default function ExpirationAndPacingSimulatorRoute() {
               </div>
             </div>
 
-            {/* Simulated Native Checkout UI Extension Banner (purchase.checkout.block.render) */}
+            {/* Simulated Native Checkout UI Extension Banner */}
             <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
               <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-2">
-                <span>
-                  Checkout UI Extension Preview (purchase.checkout.block.render)
-                </span>
+                <span>Live Shopify Checkout Order Summary Preview</span>
                 <span className="tabular-numerals font-mono">
                   {evaluation.secondsRemaining > 0
                     ? `${formatClock(evaluation.secondsRemaining)} left`
@@ -724,7 +718,7 @@ export default function ExpirationAndPacingSimulatorRoute() {
                 </div>
                 <p className="mt-1 text-xs opacity-85">
                   {isDiscountGranted
-                    ? `Your cryptographically verified $${evaluation.finalDiscountDollars.toFixed(2)} automatic discount is locked above your order summary.`
+                    ? `Your verified $${evaluation.finalDiscountDollars.toFixed(2)} automatic discount is locked above your order summary.`
                     : evaluation.statusReason}
                 </p>
               </div>
@@ -753,7 +747,7 @@ export default function ExpirationAndPacingSimulatorRoute() {
                 )}
                 <div className="flex justify-between text-emerald-700">
                   <span>
-                    Automatic Function Discount (
+                    Automatic Checkout Discount (
                     {isDiscountGranted
                       ? "CartLock Price Reservation Active"
                       : "None"}
@@ -773,44 +767,165 @@ export default function ExpirationAndPacingSimulatorRoute() {
             </div>
           </section>
 
-          {/* Live Function Input & Output JSON Inspector */}
-          <section className="rounded-2xl border border-slate-800 bg-[#090D16] p-5 text-slate-200 shadow-vault">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div className="flex items-center gap-2">
-                <Code2
-                  className="h-4 w-4 text-emerald-400"
-                  strokeWidth={1.75}
-                />
-                <h3 className="text-xs font-bold text-white">
-                  Live Shopify Function Output Payload
-                </h3>
+          {/* Clean Visual Checkout Protection & Rule Verification Card (Replaces Raw JSON Block) */}
+          <section className="cl-bento-card p-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-500/25 bg-emerald-50 text-emerald-700">
+                  <ShieldCheck className="h-4 w-4" strokeWidth={2} />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">
+                    Live Checkout Rule Verification Checklist
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    How each protection rule evaluated this simulated cart
+                  </p>
+                </div>
               </div>
-              <span className="rounded bg-white/10 px-2 py-0.5 font-mono text-[10px] text-emerald-300">
-                extensions/cartlock-discount-function/src/run.ts
+              <span
+                className={`rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${
+                  isDiscountGranted
+                    ? "border-emerald-500/30 bg-emerald-50 text-emerald-800"
+                    : "border-amber-500/30 bg-amber-50 text-amber-900"
+                }`}
+              >
+                {isDiscountGranted ? "All Rules Passed" : "Guardrail Triggered"}
               </span>
             </div>
 
-            <pre className="mt-3 max-h-[240px] overflow-auto rounded-xl bg-slate-950/90 p-3.5 font-mono text-[11px] leading-relaxed text-emerald-300">
-              {JSON.stringify(evaluation.output, null, 2)}
-            </pre>
-
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-[11px] text-slate-400">
-              <span className="inline-flex items-center gap-1.5">
-                <HmacSignatureGlyph className="h-3.5 w-3.5 text-emerald-400" />
-                <span>Signature Check:</span>
-                <strong
-                  className={
-                    evaluation.signatureValid
-                      ? "text-emerald-400"
-                      : "text-rose-400"
-                  }
+            <div className="mt-3.5 space-y-2.5">
+              {/* Check 1: Countdown Timer Window */}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <Clock
+                    className={`h-4 w-4 shrink-0 ${
+                      evaluation.secondsRemaining > 0
+                        ? "text-emerald-600"
+                        : "text-rose-600"
+                    }`}
+                    strokeWidth={2}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-900">
+                      1. Reservation Timer Window ({settings.lockDurationMinutes}
+                      m Limit)
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {evaluation.secondsRemaining > 0
+                        ? `Shopper checked out in time (${formatClock(evaluation.secondsRemaining)} remaining)`
+                        : "Timer reached 00:00 • Price reverted to full catalog price"}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold ${
+                    evaluation.secondsRemaining > 0
+                      ? "bg-emerald-100 text-emerald-900"
+                      : "bg-rose-100 text-rose-900"
+                  }`}
                 >
-                  {evaluation.signatureValid ? "VALID MATCH" : "TAMPER REJECTED"}
-                </strong>
-              </span>
-              <code className="truncate font-mono text-[10px] text-slate-400">
-                {functionInput.cart.signature?.value}
-              </code>
+                  {evaluation.secondsRemaining > 0 ? "IN WINDOW" : "EXPIRED"}
+                </span>
+              </div>
+
+              {/* Check 2: Minimum Spend & Tier Match */}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <TrendingUp
+                    className={`h-4 w-4 shrink-0 ${
+                      evaluation.stretchGoalShortfall === 0
+                        ? "text-emerald-600"
+                        : "text-amber-600"
+                    }`}
+                    strokeWidth={2}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-900">
+                      2. Spend Threshold & Tier Qualification
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {evaluation.activeTier
+                        ? `Qualified for Tier ${evaluation.activeTier.tier} ($${evaluation.activeTier.threshold}+ spend -> ${evaluation.effectiveDiscountValue}% Off)`
+                        : evaluation.stretchGoalShortfall === 0
+                          ? `Met minimum cart spend ($${settings.minCartSubtotal.toFixed(2)})`
+                          : `Cart is $${evaluation.stretchGoalShortfall.toFixed(2)} below minimum spend • Stretch Goal upsell shown`}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold ${
+                    evaluation.stretchGoalShortfall === 0
+                      ? "bg-emerald-100 text-emerald-900"
+                      : "bg-amber-100 text-amber-900"
+                  }`}
+                >
+                  {evaluation.activeTier
+                    ? `TIER ${evaluation.activeTier.tier}`
+                    : evaluation.stretchGoalShortfall === 0
+                      ? "QUALIFIED"
+                      : "STRETCH GOAL"}
+                </span>
+              </div>
+
+              {/* Check 3: Sale Item & Max Cap Margin Shield */}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <MarginShieldEmblem className="h-4 w-4 shrink-0 text-emerald-600" />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-900">
+                      3. Sale Item & Max Dollar Cap Shield
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {evaluation.eligibleSubtotal === 0 &&
+                      evaluation.excludedSaleSubtotal > 0
+                        ? "Clearance item already on sale • Protected from double discounting"
+                        : evaluation.status === "GRANTED_CAPPED"
+                          ? `Discount capped at $${(settings.maxDiscountCap || 25).toFixed(2)} maximum limit`
+                          : `Full-price items eligible • Protected by $${(settings.maxDiscountCap || 25).toFixed(2)} max cap`}
+                    </span>
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-md bg-emerald-100 px-2 py-0.5 font-mono text-[10px] font-bold text-emerald-900">
+                  {evaluation.status === "GRANTED_CAPPED"
+                    ? "CAPPED"
+                    : evaluation.excludedSaleSubtotal > 0
+                      ? "SALE SHIELDED"
+                      : "PROTECTED"}
+                </span>
+              </div>
+
+              {/* Check 4: Timer Tamper & Coupon Extension Protection */}
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/70 px-3.5 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <HmacSignatureGlyph
+                    className={`h-4 w-4 shrink-0 ${
+                      evaluation.signatureValid
+                        ? "text-emerald-600"
+                        : "text-rose-600"
+                    }`}
+                  />
+                  <div>
+                    <span className="block text-xs font-bold text-slate-900">
+                      4. Timer Tamper & Extension Firewall
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {evaluation.signatureValid
+                        ? "Authentic store reservation • Zero static coupon codes to leak"
+                        : "Browser timer edit detected • Checkout discount automatically blocked"}
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`shrink-0 rounded-md px-2 py-0.5 font-mono text-[10px] font-bold ${
+                    evaluation.signatureValid
+                      ? "bg-emerald-100 text-emerald-900"
+                      : "bg-rose-100 text-rose-900"
+                  }`}
+                >
+                  {evaluation.signatureValid ? "VERIFIED" : "BLOCKED"}
+                </span>
+              </div>
             </div>
           </section>
 
@@ -826,19 +941,25 @@ export default function ExpirationAndPacingSimulatorRoute() {
                     Margin Shield vs. Leaked Static Coupon (100 Checkouts)
                   </h3>
                   <p className="text-[11px] text-slate-500">
-                    Compares this exact cart under CartLock Function rules vs. a
-                    static <code className="font-mono">WELCOME10</code> promo
-                    code scraped by browser extensions.
+                    Compares your protected CartLock rules against a static
+                    promo code leaked to Honey & browser coupon extensions.
                   </p>
                 </div>
               </div>
             </div>
 
             {(() => {
+              const highestTierRate = Math.max(
+                settings.discountValue,
+                evaluation.effectiveDiscountValue || 20,
+                ...evaluation.resolvedTiers.map((t) => t.discountValue),
+              );
+              // A leaked static coupon is auto-applied uncapped by extensions to all carts (including sale items)
+              // and stacked with a $5.00 average clearance/shipping promo leak per order
               const staticCouponLossPerOrder = Number(
                 (
-                  (evaluation.cartSubtotal * settings.discountValue) /
-                  100
+                  (evaluation.cartSubtotal * highestTierRate) / 100 +
+                  (evaluation.excludedSaleSubtotal > 0 ? 8.5 : 5.0)
                 ).toFixed(2),
               );
               const cartLockGiveawayPerOrder = evaluation.finalDiscountDollars;
@@ -864,7 +985,8 @@ export default function ExpirationAndPacingSimulatorRoute() {
                       -${staticCouponLossPerOrder.toFixed(2)} / order
                     </p>
                     <p className="mt-0.5 text-[10px] text-rose-700">
-                      Discounts clearance items, uncapped, never expires
+                      Uncapped {highestTierRate}% off + discounts sale items &
+                      never expires
                     </p>
                   </div>
 

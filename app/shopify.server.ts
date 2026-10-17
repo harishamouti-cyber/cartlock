@@ -60,13 +60,77 @@ export interface AdminGraphQLClient {
  * and falls back gracefully in standalone local development / preview mode so all routes
  * remain 100% interactive without requiring a live OAuth tunnel.
  */
+function extractShopFromRequest(request: Request): string | null {
+  const url = new URL(request.url);
+  const directShop = url.searchParams.get("shop");
+  if (directShop && directShop.includes(".myshopify.com")) {
+    return directShop;
+  }
+
+  // Check id_token or Bearer token JWT payload for `dest` claim
+  const authHeader = request.headers.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : null;
+  const rawToken = url.searchParams.get("id_token") || bearerToken;
+  if (rawToken && rawToken.split(".").length === 3) {
+    try {
+      const payloadJson = JSON.parse(
+        Buffer.from(rawToken.split(".")[1], "base64url").toString("utf8"),
+      );
+      if (typeof payloadJson.dest === "string") {
+        const destHost = payloadJson.dest.replace(/^https?:\/\//i, "").split("/")[0];
+        if (destHost.endsWith(".myshopify.com")) {
+          return destHost;
+        }
+      }
+    } catch {
+      // Ignore malformed token
+    }
+  }
+
+  // Check base64 `host` parameter from Shopify Admin
+  const hostParam = url.searchParams.get("host");
+  if (hostParam) {
+    try {
+      const decodedHost = Buffer.from(hostParam, "base64").toString("utf8");
+      const storeMatch = decodedHost.match(/store\/([a-z0-9-]+)/i);
+      if (storeMatch?.[1]) {
+        return `${storeMatch[1]}.myshopify.com`;
+      }
+    } catch {
+      // Ignore malformed host param
+    }
+  }
+
+  // Check Referer header for ?shop= or /store/<handle>
+  const referer = request.headers.get("referer");
+  if (referer) {
+    try {
+      const refUrl = new URL(referer);
+      const refShop = refUrl.searchParams.get("shop");
+      if (refShop && refShop.includes(".myshopify.com")) {
+        return refShop;
+      }
+      const storeMatch = refUrl.pathname.match(/\/store\/([a-z0-9-]+)/i);
+      if (storeMatch?.[1]) {
+        return `${storeMatch[1]}.myshopify.com`;
+      }
+    } catch {
+      // Ignore invalid referer
+    }
+  }
+
+  return null;
+}
+
 export async function authenticateAdminOrFallback(request: Request): Promise<{
   shop: string;
   admin: AdminGraphQLClient | null;
   isEmbeddedSession: boolean;
 }> {
   const url = new URL(request.url);
-  const queryShop = url.searchParams.get("shop");
+  const detectedShop = extractShopFromRequest(request);
 
   try {
     if (
@@ -82,12 +146,12 @@ export async function authenticateAdminOrFallback(request: Request): Promise<{
       };
     }
   } catch {
-    // Fall through to local preview session
+    // Fall through to detected shop session
   }
 
   return {
-    shop: queryShop || DEFAULT_DEV_SHOP,
+    shop: detectedShop || DEFAULT_DEV_SHOP,
     admin: null,
-    isEmbeddedSession: false,
+    isEmbeddedSession: Boolean(detectedShop),
   };
 }

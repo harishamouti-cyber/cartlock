@@ -546,11 +546,8 @@ export default function OfferStudioAndCustomizerRoute() {
                     Discount & Margin Shield Rules
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Synced directly to the{" "}
-                    <code className="font-mono text-[11px] text-slate-700">
-                      $app:cartlock
-                    </code>{" "}
-                    Function metafield with zero promo code stacking.
+                    Synced automatically to your Shopify Checkout with zero
+                    promo code stacking.
                   </p>
                 </div>
               </div>
@@ -698,14 +695,14 @@ export default function OfferStudioAndCustomizerRoute() {
                       </span>
                     </div>
                     <p className="text-xs text-slate-600">
-                      Configure 3 progressive cart thresholds (e.g., Spend $
-                      {tiers[0]?.threshold || 50} -&gt; Lock{" "}
+                      Reward higher cart values with progressive savings (Spend
+                      ${tiers[0]?.threshold || 50} &rarr; Lock{" "}
                       {tiers[0]?.discountValue || 10}%, Spend $
-                      {tiers[1]?.threshold || 100} -&gt; Lock{" "}
+                      {tiers[1]?.threshold || 100} &rarr; Lock{" "}
                       {tiers[1]?.discountValue || 15}%, Spend $
-                      {tiers[2]?.threshold || 150} -&gt; Lock{" "}
-                      {tiers[2]?.discountValue || 20}%) synced directly to the
-                      native Shopify Discount Function.
+                      {tiers[2]?.threshold || 150} &rarr; Lock{" "}
+                      {tiers[2]?.discountValue || 20}%) automatically applied at
+                      checkout.
                     </p>
                   </div>
 
@@ -763,7 +760,8 @@ export default function OfferStudioAndCustomizerRoute() {
                           }}
                           className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-800 shadow-2xs hover:border-emerald-500/40"
                         >
-                          Standard ($50-&gt;10% / $100-&gt;15% / $150-&gt;20%)
+                          Standard ($50 &rarr; 10% / $100 &rarr; 15% / $150
+                          &rarr; 20%)
                         </button>
                         <button
                           type="button"
@@ -810,7 +808,7 @@ export default function OfferStudioAndCustomizerRoute() {
                               TIER {tierObj.tier}
                             </span>
                             <span className="tabular-numerals font-mono text-[11px] font-bold text-slate-700">
-                              Spend ${tierObj.threshold} -&gt;{" "}
+                              Spend ${tierObj.threshold} &rarr;{" "}
                               {discountType === "PERCENTAGE"
                                 ? `${tierObj.discountValue}%`
                                 : `$${tierObj.discountValue}`}
@@ -897,15 +895,9 @@ export default function OfferStudioAndCustomizerRoute() {
                     </span>
                   </div>
                   <p className="text-xs text-slate-500">
-                    Automatically skips any cart line item where{" "}
-                    <code className="font-mono text-[11px] text-slate-700">
-                      compareAtAmountPerQuantity &gt; amountPerQuantity
-                    </code>{" "}
-                    and enforces{" "}
-                    <code className="font-mono text-[11px] text-slate-700">
-                      combinesWith: false
-                    </code>
-                    .
+                    Automatically excludes products already marked down on sale
+                    and blocks shoppers from stacking other promo codes at
+                    checkout.
                   </p>
                 </div>
                 <button
@@ -1131,7 +1123,7 @@ export default function OfferStudioAndCustomizerRoute() {
                 </div>
               </div>
 
-              {/* Cryptographic Secret Salt Status */}
+              {/* Checkout Timer Tamper Protection Status */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3.5">
                 <div className="flex items-center gap-2.5">
                   <KeyRound
@@ -1140,15 +1132,16 @@ export default function OfferStudioAndCustomizerRoute() {
                   />
                   <div>
                     <span className="block text-xs font-bold text-slate-900">
-                      Cryptographic Cart Signing Key (secretSalt)
+                      Checkout Timer Tamper Protection
                     </span>
-                    <code className="font-mono text-[11px] text-slate-500">
-                      {settings.secretSalt}
-                    </code>
+                    <span className="text-[11px] text-slate-500">
+                      Prevents shoppers from resetting or extending their
+                      countdown timer in the browser
+                    </span>
                   </div>
                 </div>
                 <span className="rounded-lg bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">
-                  Anti-Inspect-Element Active
+                  Protected
                 </span>
               </div>
             </div>
@@ -1166,10 +1159,14 @@ export default function OfferStudioAndCustomizerRoute() {
                     Modal Copywriting & Brand Identity
                   </h2>
                   <p className="text-xs text-slate-500">
-                    Click any dynamic variable chip below to insert into the
-                    focused copy field (
+                    Click any smart tag below to insert it into your selected
+                    text field (
                     <span className="font-semibold text-slate-800">
-                      {focusedCopyField}
+                      {focusedCopyField === "modalHeadline"
+                        ? "Modal Headline"
+                        : focusedCopyField === "modalBodyText"
+                          ? "Reservation Body Copy"
+                          : "Action Button Text"}
                     </span>
                     ).
                   </p>
@@ -1185,7 +1182,7 @@ export default function OfferStudioAndCustomizerRoute() {
                     htmlFor="storeDisplayName"
                     className="block text-xs font-semibold text-slate-700"
                   >
-                    Store Brand Display Name (Auto-Sanitized)
+                    Store Brand Display Name
                   </label>
                   <button
                     type="button"
@@ -1194,7 +1191,7 @@ export default function OfferStudioAndCustomizerRoute() {
                     }
                     className="text-[11px] font-semibold text-emerald-700 hover:underline"
                   >
-                    Sanitize from {shop}
+                    Reset to {sanitizeStoreDisplayName(shop)}
                   </button>
                 </div>
                 <input
@@ -1211,9 +1208,13 @@ export default function OfferStudioAndCustomizerRoute() {
               <div className="rounded-xl border border-slate-200/90 bg-slate-50/90 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[11px] font-semibold text-slate-600">
-                    Insert Dynamic Variable into{" "}
-                    <span className="rounded bg-white px-1.5 py-0.5 font-mono text-slate-900 shadow-2xs">
-                      {focusedCopyField}
+                    Insert Smart Tag into{" "}
+                    <span className="rounded bg-white px-1.5 py-0.5 font-semibold text-slate-900 shadow-2xs">
+                      {focusedCopyField === "modalHeadline"
+                        ? "Modal Headline"
+                        : focusedCopyField === "modalBodyText"
+                          ? "Reservation Body Copy"
+                          : "Action Button Text"}
                     </span>
                     :
                   </span>
@@ -1245,9 +1246,6 @@ export default function OfferStudioAndCustomizerRoute() {
                         }`}
                       >
                         <span>{chip.label}</span>
-                        <code className="font-mono text-[10px] opacity-75">
-                          {chip.token}
-                        </code>
                       </button>
                     ))}
                   </div>
@@ -1360,11 +1358,8 @@ export default function OfferStudioAndCustomizerRoute() {
             <div className="flex items-center gap-2 text-xs text-slate-600">
               <Zap className="h-4 w-4 text-emerald-600" strokeWidth={1.75} />
               <span>
-                Saving runs{" "}
-                <code className="font-mono text-[11px] font-semibold text-slate-800">
-                  discountAutomaticAppUpdate
-                </code>{" "}
-                and updates the Function metafield automatically.
+                Changes sync immediately to your storefront widget and Shopify
+                Checkout discount rules.
               </span>
             </div>
 
@@ -1399,8 +1394,7 @@ export default function OfferStudioAndCustomizerRoute() {
                   </h2>
                 </div>
                 <p className="text-[11px] text-slate-500">
-                  Real catalog media ({activeCatalogItem.imageSource},{" "}
-                  <code className="font-mono">width=300</code>)
+                  Interactive preview using your store catalog products
                 </p>
               </div>
 
@@ -1582,11 +1576,11 @@ export default function OfferStudioAndCustomizerRoute() {
                     <span className="h-2 w-2 rounded-full bg-amber-400/70" />
                     <span className="h-2 w-2 rounded-full bg-emerald-500/70" />
                   </div>
-                  <span className="font-mono text-[10px] text-slate-300">
+                  <span className="text-[11px] font-medium text-slate-300">
                     {storeDisplayName} Storefront
                   </span>
-                  <span className="font-mono text-[10px] text-emerald-400">
-                    /cart.js (1)
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                    Cart • 1 item
                   </span>
                 </div>
 
@@ -1601,19 +1595,9 @@ export default function OfferStudioAndCustomizerRoute() {
                           <span className="text-white">{storeDisplayName}</span>
                         </p>
                         <p className="mt-1 text-[11px] text-slate-400">
-                          Cart attributes{" "}
-                          <code className="font-mono text-emerald-300">
-                            _cartlock_expires_at
-                          </code>{" "}
-                          and{" "}
-                          <code className="font-mono text-emerald-300">
-                            _cartlock_signature
-                          </code>{" "}
-                          are signed in{" "}
-                          <code className="font-mono text-emerald-300">
-                            /cart/update.js
-                          </code>
-                          .
+                          The floating reservation pill stays pinned at the
+                          bottom of the screen while the shopper continues
+                          browsing your catalog.
                         </p>
                       </div>
 

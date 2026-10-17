@@ -340,7 +340,12 @@ export function sanitizeStoreDisplayName(rawInput: string): string {
   const rawTokens = withoutDomain
     .split(/[-_.\s]+/)
     .map((t) => t.trim())
-    .filter((t) => t.length > 0 && !/^\d+$/.test(t));
+    .filter(
+      (t) =>
+        t.length > 0 &&
+        !/^\d+$/.test(t) &&
+        !(t.length >= 6 && /\d/.test(t) && /[a-z]/i.test(t)),
+    );
 
   const cleanedTokens = rawTokens.filter(
     (t) => !noiseTokens.has(t.toLowerCase()),
@@ -356,6 +361,7 @@ export function sanitizeStoreDisplayName(rawInput: string): string {
   return tokensToFormat
     .map((word) => {
       if (word.toLowerCase() === "cartlock") return "CartLock";
+      if (word.toLowerCase() === "rankpilot") return "RankPilot";
       return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     })
     .join(" ");
